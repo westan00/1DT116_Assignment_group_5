@@ -34,6 +34,13 @@ If you are on Ubuntu, the following command should install the library for you.
 # apt install libtinyxml2-dev
 ```
 
+On MacOS (I use the [brew](https://brew.sh/) package manager) you can run the
+following command.
+
+```
+$ brew install tinyxml2
+```
+
 ### Prerequisite: CUDA
 
 The 2nd (optional) and 4th part of the assignment requires running the code using CUDA. 
