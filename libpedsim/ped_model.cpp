@@ -46,6 +46,7 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
 
 void Ped::Model::tick() {
   // EDIT HERE FOR ASSIGNMENT 1
+#pragma omp parallel for default(none) shared(agents) private(agent)
   for (Ped::Tagent *agent : agents) {
     agent->computeNextDesiredPosition();
     agent->setX(agent->getDesiredX());
