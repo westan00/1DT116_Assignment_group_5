@@ -58,7 +58,7 @@ void tick_thread(std::vector<Ped::Tagent *>::iterator start,
 void Ped::Model::tick() {
   unsigned int num_threads = std::thread::hardware_concurrency();
   if (num_threads == 0)
-    num_threads = 8;
+    num_threads = 4;
 
   int chunk_size = agents.size() / num_threads;
 

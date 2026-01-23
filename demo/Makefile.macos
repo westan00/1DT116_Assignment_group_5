@@ -10,7 +10,7 @@ LIBPEDCUDAOBJECTS=$(LIBPEDSOURCES:.cu=.co)
 TARGET=demo
 INCPATH=-I../libpedsim -I/opt/homebrew/opt/libomp/include -I/opt/homebrew/Cellar/tinyxml2/11.0.0/include
 LIBPATH=-L../libpedsim -L/opt/homebrew/opt/libomp/lib -L/opt/homebrew/Cellar/tinyxml2/11.0.0/lib
-CXXFLAGS=-g -fPIC  -Xpreprocessor -fopenmp -DNOQT --std=c++11
+CXXFLAGS=-O3 -march=native -g -fPIC  -Xpreprocessor -fopenmp -DNOQT --std=c++11
 LIBS = -lpedsim -ltinyxml2 -lomp
 LDFLAGS+="-Wl,-rpath,../libpedsim,-rpath,./libpedsim"
 
