@@ -56,16 +56,22 @@ void tick_thread(std::vector<Ped::Tagent *>::iterator start,
 }
 
 void Ped::Model::tick() {
-  std::vector<std::thread> threads;
-  int num_of_threads = 8;
-  auto begin = agents.begin();
-  int chunk_size = agents.size() / num_of_threads;
-  for (int i = 0; i < num_of_threads; i++) {
-    auto end = (i == num_of_threads - 1) ? agents.end() : begin + chunk_size;
+  unsigned int num_threads = std::thread::hardware_concurrency();
+  if (num_threads == 0)
+    num_threads = 8;
 
-    threads.emplace_back(tick_thread, begin, end);
-    begin = end;
+  int chunk_size = agents.size() / num_threads;
+
+  std::vector<std::thread> threads;
+  auto start = agents.begin();
+
+  for (unsigned int i = 0; i < num_threads - 1; ++i) {
+    auto end = start + chunk_size;
+    threads.emplace_back(tick_thread, start, end);
+    start = end;
   }
+
+  tick_thread(start, agents.end());
 
   for (auto &t : threads) {
     t.join();
