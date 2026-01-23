@@ -61,8 +61,7 @@ void Ped::Model::tick() {
   auto begin = agents.begin();
   int chunk_size = agents.size() / num_of_threads;
   for (int i = 0; i < num_of_threads; i++) {
-    auto end =
-        (i == num_of_threads - 1) ? agents.end() : agents.begin() + chunk_size;
+    auto end = (i == num_of_threads - 1) ? agents.end() : begin + chunk_size;
 
     threads.emplace_back(tick_thread, begin, end);
     begin = end;
