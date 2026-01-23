@@ -6,12 +6,14 @@
 // Adapted for Low Level Parallel Programming 2017
 //
 #include "ped_model.h"
+#include "ped_agent.h"
 #include "ped_waypoint.h"
 #include <algorithm>
 #include <iostream>
 #include <omp.h>
 #include <stack>
 #include <thread>
+#include <vector>
 
 #ifndef NOCDUA
 #include "cuda_testkernel.h"
@@ -44,27 +46,23 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
   setupHeatmapSeq();
 }
 
-void tick_thread(std::vector<Ped::Tagent *> agents) {
-  for (Ped::Tagent *agent : agents) {
-    agent->computeNextDesiredPosition();
-    agent->setX(agent->getDesiredX());
-    agent->setY(agent->getDesiredY());
+void tick_thread(std::vector<Ped::Tagent *>::iterator start,
+                 std::vector<Ped::Tagent *>::iterator end) {
+  for (auto it = start; it != end; ++it) {
+    (*it)->computeNextDesiredPosition();
+    (*it)->setX((*it)->getDesiredX());
+    (*it)->setY((*it)->getDesiredY());
   }
 }
 
 void Ped::Model::tick() {
-  std::thread t1(tick_thread,
-                 std::vector<Ped::Tagent *>(
-                     agents.begin(), agents.begin() + agents.size() / 4));
-  std::thread t2(tick_thread, std::vector<Ped::Tagent *>(
-                                  agents.begin() + agents.size() / 4,
-                                  agents.begin() + agents.size() / 2));
-  std::thread t3(tick_thread, std::vector<Ped::Tagent *>(
-                                  agents.begin() + agents.size() / 2,
-                                  agents.begin() + agents.size() / (4 / 3)));
-  std::thread t4(tick_thread,
-                 std::vector<Ped::Tagent *>(
-                     agents.begin() + agents.size() / (4 / 3), agents.end()));
+  int chunk_size = agents.size() / 4;
+  std::thread t1(tick_thread, agents.begin(), agents.begin() + chunk_size);
+  std::thread t2(tick_thread, agents.begin() + chunk_size,
+                 agents.begin() + 2 * chunk_size);
+  std::thread t3(tick_thread, agents.begin() + 2 * chunk_size,
+                 agents.begin() + 3 * chunk_size);
+  std::thread t4(tick_thread, agents.begin() + 3 * chunk_size, agents.end());
 
   t1.join();
   t2.join();
