@@ -44,15 +44,43 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
   setupHeatmapSeq();
 }
 
-void Ped::Model::tick() {
-  // EDIT HERE FOR ASSIGNMENT 1
-#pragma omp parallel for default(none) shared(agents)
+void tick_thread(std::vector<Ped::Tagent *> agents) {
   for (Ped::Tagent *agent : agents) {
     agent->computeNextDesiredPosition();
     agent->setX(agent->getDesiredX());
     agent->setY(agent->getDesiredY());
   }
 }
+
+void Ped::Model::tick() {
+  std::thread t1(tick_thread,
+                 std::vector<Ped::Tagent *>(
+                     agents.begin(), agents.begin() + agents.size() / 4));
+  std::thread t2(tick_thread, std::vector<Ped::Tagent *>(
+                                  agents.begin() + agents.size() / 4,
+                                  agents.begin() + agents.size() / 2));
+  std::thread t3(tick_thread, std::vector<Ped::Tagent *>(
+                                  agents.begin() + agents.size() / 2,
+                                  agents.begin() + agents.size() / (4 / 3)));
+  std::thread t4(tick_thread,
+                 std::vector<Ped::Tagent *>(
+                     agents.begin() + agents.size() / (4 / 3), agents.end()));
+
+  t1.join();
+  t2.join();
+  t3.join();
+  t4.join();
+}
+
+// void Ped::Model::tick() {
+//// EDIT HERE FOR ASSIGNMENT 1
+// #pragma omp parallel for default(none) shared(agents)
+// for (Ped::Tagent *agent : agents) {
+// agent->computeNextDesiredPosition();
+// agent->setX(agent->getDesiredX());
+// agent->setY(agent->getDesiredY());
+//}
+//}
 
 ////////////
 /// Everything below here relevant for Assignment 3.
