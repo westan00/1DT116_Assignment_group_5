@@ -56,20 +56,22 @@ void tick_thread(std::vector<Ped::Tagent *>::iterator start,
 }
 
 void Ped::Model::tick() {
-  int chunk_size = agents.size() / 4;
-  std::thread t1(tick_thread, agents.begin(), agents.begin() + chunk_size);
-  std::thread t2(tick_thread, agents.begin() + chunk_size,
-                 agents.begin() + 2 * chunk_size);
-  std::thread t3(tick_thread, agents.begin() + 2 * chunk_size,
-                 agents.begin() + 3 * chunk_size);
-  std::thread t4(tick_thread, agents.begin() + 3 * chunk_size, agents.end());
+  std::vector<std::thread> threads;
+  int num_of_threads = 8;
+  auto begin = agents.begin();
+  int chunk_size = agents.size() / num_of_threads;
+  for (int i = 0; i < num_of_threads; i++) {
+    auto end =
+        (i == num_of_threads - 1) ? agents.end() : agents.begin() + chunk_size;
 
-  t1.join();
-  t2.join();
-  t3.join();
-  t4.join();
+    threads.emplace_back(tick_thread, begin, end);
+    begin = end;
+  }
+
+  for (auto &t : threads) {
+    t.join();
+  }
 }
-
 // void Ped::Model::tick() {
 //// EDIT HERE FOR ASSIGNMENT 1
 // #pragma omp parallel for default(none) shared(agents)
