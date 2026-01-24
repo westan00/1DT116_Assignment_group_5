@@ -56,36 +56,58 @@ void tick_thread(std::vector<Ped::Tagent *>::iterator start,
 }
 
 void Ped::Model::tick() {
-  unsigned int num_threads = std::thread::hardware_concurrency();
-  if (num_threads == 0)
-    num_threads = 4;
-
-  int chunk_size = agents.size() / num_threads;
-
-  std::vector<std::thread> threads;
-  auto start = agents.begin();
-
-  for (unsigned int i = 0; i < num_threads - 1; ++i) {
-    auto end = start + chunk_size;
-    threads.emplace_back(tick_thread, start, end);
-    start = end;
+  // EDIT HERE FOR ASSIGNMENT 1
+  switch (this->implementation) {
+  case SEQ: {
+    for (Ped::Tagent *agent : agents) {
+      agent->computeNextDesiredPosition();
+      agent->setX(agent->getDesiredX());
+      agent->setY(agent->getDesiredY());
+    }
+    break;
   }
+  case OMP: {
+#pragma omp parallel for default(none) shared(agents)
+    for (Ped::Tagent *agent : agents) {
+      agent->computeNextDesiredPosition();
+      agent->setX(agent->getDesiredX());
+      agent->setY(agent->getDesiredY());
+    }
+    break;
+  }
+  case PTHREAD: {
 
-  tick_thread(start, agents.end());
+    unsigned int num_threads = std::thread::hardware_concurrency();
+    if (num_threads == 0)
+      num_threads = 4;
 
-  for (auto &t : threads) {
-    t.join();
+    int chunk_size = agents.size() / num_threads;
+
+    std::vector<std::thread> threads;
+    auto start = agents.begin();
+
+    for (unsigned int i = 0; i < num_threads - 1; ++i) {
+      auto end = start + chunk_size;
+      threads.emplace_back(tick_thread, start, end);
+      start = end;
+    }
+
+    tick_thread(start, agents.end());
+
+    for (auto &t : threads) {
+      t.join();
+    }
+    break;
+  }
+  default: {
+    for (Ped::Tagent *agent : agents) {
+      agent->computeNextDesiredPosition();
+      agent->setX(agent->getDesiredX());
+      agent->setY(agent->getDesiredY());
+    }
+  }
   }
 }
-// void Ped::Model::tick() {
-//// EDIT HERE FOR ASSIGNMENT 1
-// #pragma omp parallel for default(none) shared(agents)
-// for (Ped::Tagent *agent : agents) {
-// agent->computeNextDesiredPosition();
-// agent->setX(agent->getDesiredX());
-// agent->setY(agent->getDesiredY());
-//}
-//}
 
 ////////////
 /// Everything below here relevant for Assignment 3.
