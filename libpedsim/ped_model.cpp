@@ -42,7 +42,27 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
 
   // Sets the chosen implemenation. Standard in the given code is SEQ
   this->implementation = implementation;
+  if (this->implementation == PTHREAD) {
+    num_threads = std::thread::hardware_concurrency();
+    if (num_threads == 0)
+      num_threads = 4;
 
+    // 2. Initialize Synchronization Primitives
+    pthread_mutex_init(&mutex, NULL);
+    pthread_cond_init(&cond_start, NULL);
+    pthread_cond_init(&cond_done, NULL);
+
+    tick_serial = 0;
+    threads_finished = 0;
+    shutdown = false;
+
+    threads.resize(num_threads);
+    for (int i = 0; i < num_threads; ++i) {
+      int *id = new int(i);
+      pthread_create(&threads[i], NULL, &Ped::Model::worker_entry,
+                     (void *)this);
+    }
+  }
   // Set up heatmap (relevant for Assignment 4)
   setupHeatmapSeq();
 }
@@ -53,6 +73,56 @@ void tick_thread(std::vector<Ped::Tagent *>::iterator start,
     (*it)->computeNextDesiredPosition();
     (*it)->setX((*it)->getDesiredX());
     (*it)->setY((*it)->getDesiredY());
+  }
+}
+
+struct ThreadArgs {
+  Ped::Model *model;
+  int thread_id;
+};
+
+void *Ped::Model::worker_entry(void *arg) {
+  ThreadArgs *args = (ThreadArgs *)arg;
+  args->model->worker_logic(args->thread_id);
+  delete args; // Clean up the argument
+  return NULL;
+}
+
+void Ped::Model::worker_logic(int thread_id) {
+  int last_tick_seen = 0;
+
+  while (true) {
+    pthread_mutex_lock(&mutex);
+
+    while (!shutdown && tick_serial == last_tick_seen) {
+      pthread_cond_wait(&cond_start, &mutex);
+    }
+
+    if (shutdown) {
+      pthread_mutex_unlock(&mutex);
+      break;
+    }
+
+    last_tick_seen = tick_serial;
+    pthread_mutex_unlock(&mutex);
+
+    int chunk_size = agents.size() / num_threads;
+    int start = thread_id * chunk_size;
+    int end = (thread_id == num_threads - 1) ? agents.size()
+                                             : (thread_id + 1) * chunk_size;
+
+    for (int i = start; i < end; ++i) {
+      agents[i]->computeNextDesiredPosition();
+      agents[i]->setX(agents[i]->getDesiredX());
+      agents[i]->setY(agents[i]->getDesiredY());
+    }
+
+    pthread_mutex_lock(&mutex);
+    threads_finished++;
+    if (threads_finished == num_threads) {
+      pthread_cond_signal(&cond_done);
+    }
+    pthread_mutex_unlock(&mutex);
   }
 }
 
@@ -77,37 +147,14 @@ void Ped::Model::tick() {
     break;
   }
   case PTHREAD: {
-    struct ThreadArg {
-      std::vector<Ped::Tagent *>::iterator start;
-      std::vector<Ped::Tagent *>::iterator end;
-    };
-    unsigned int num_threads = std::thread::hardware_concurrency();
-    if (num_threads == 0)
-      num_threads = 4;
-
-    int chunk_size = agents.size() / num_threads;
-
-    std::vector<pthread_t> threads(num_threads - 1);
-    std::vector<ThreadArg> thread_args(num_threads - 1);
-    auto start = agents.begin();
-
-    for (unsigned int i = 0; i < num_threads - 1; ++i) {
-      auto end = start + chunk_size;
-      thread_args[i].start = start;
-      thread_args[i].end = end;
-
-      pthread_create(
-          &threads[i], NULL,
-          [](void *arg) -> void * {
-            ThreadArg *t_arg = (ThreadArg *)arg;
-            tick_thread(t_arg->start, t_arg->end);
-            return NULL;
-          },
-          &thread_args[i]);
-
-      start = end;
+    pthread_mutex_lock(&mutex);
+    threads_finished = 0;
+    tick_serial++;
+    pthread_cond_broadcast(&cond_start);
+    while (threads_finished < num_threads) {
+      pthread_cond_wait(&cond_done, &mutex);
     }
-
+    pthread_mutex_unlock(&mutex);
     break;
   }
   default: {
