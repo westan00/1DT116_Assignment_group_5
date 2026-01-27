@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <iostream>
 #include <omp.h>
+#include <pthread.h>
 #include <stack>
 #include <thread>
 #include <vector>
@@ -76,27 +77,37 @@ void Ped::Model::tick() {
     break;
   }
   case PTHREAD: {
-
+    struct ThreadArg {
+      std::vector<Ped::Tagent *>::iterator start;
+      std::vector<Ped::Tagent *>::iterator end;
+    };
     unsigned int num_threads = std::thread::hardware_concurrency();
     if (num_threads == 0)
       num_threads = 4;
 
     int chunk_size = agents.size() / num_threads;
 
-    std::vector<std::thread> threads;
+    std::vector<pthread_t> threads(num_threads - 1);
+    std::vector<ThreadArg> thread_args(num_threads - 1);
     auto start = agents.begin();
 
     for (unsigned int i = 0; i < num_threads - 1; ++i) {
       auto end = start + chunk_size;
-      threads.emplace_back(tick_thread, start, end);
+      thread_args[i].start = start;
+      thread_args[i].end = end;
+
+      pthread_create(
+          &threads[i], NULL,
+          [](void *arg) -> void * {
+            ThreadArg *t_arg = (ThreadArg *)arg;
+            tick_thread(t_arg->start, t_arg->end);
+            return NULL;
+          },
+          &thread_args[i]);
+
       start = end;
     }
 
-    tick_thread(start, agents.end());
-
-    for (auto &t : threads) {
-      t.join();
-    }
     break;
   }
   default: {
