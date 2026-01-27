@@ -82,7 +82,7 @@ void Ped::Model::worker_loop(int thread_id) {
   while (true) {
     // Spin wait for new tick
     while (tick_counter.load(std::memory_order_acquire) == local_tick && !shutdown) {
-        // busy wait
+        std::this_thread::yield();
     }
 
     if (shutdown) {
@@ -134,7 +134,7 @@ void Ped::Model::tick() {
     
     // Busy wait for all threads to finish
     while (finished_threads.load(std::memory_order_acquire) < num_threads) {
-        // busy wait
+        std::this_thread::yield();
     }
     break;
   }
