@@ -64,6 +64,7 @@ private:
   // Moves an agent towards its next position
   void move(Ped::Tagent *agent);
 
+  // Pthreads
   std::vector<pthread_t> threads;
   int num_threads;
 
@@ -71,12 +72,17 @@ private:
   pthread_cond_t cond_start;
   pthread_cond_t cond_done;
 
-  int tick_serial;
-  int threads_finished;
+  int tick_counter;
+  int finished_threads;
   bool shutdown;
 
-  static void *worker_entry(void *arg);
-  void worker_logic(int thread_id);
+  struct ThreadArg {
+    Model *model;
+    int id;
+  };
+
+  static void *thread_entry(void *arg);
+  void worker_loop(int thread_id);
 
   ////////////
   /// Everything below here won't be relevant until Assignment 3

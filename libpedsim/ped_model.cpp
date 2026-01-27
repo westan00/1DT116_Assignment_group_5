@@ -52,15 +52,14 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
     pthread_cond_init(&cond_start, NULL);
     pthread_cond_init(&cond_done, NULL);
 
-    tick_serial = 0;
-    threads_finished = 0;
+    tick_counter = 0;
+    finished_threads = 0;
     shutdown = false;
 
     threads.resize(num_threads);
     for (int i = 0; i < num_threads; ++i) {
-      int *id = new int(i);
-      pthread_create(&threads[i], NULL, &Ped::Model::worker_entry,
-                     (void *)this);
+      ThreadArg *arg = new ThreadArg{this, i};
+      pthread_create(&threads[i], NULL, &Ped::Model::thread_entry, arg);
     }
   }
   // Set up heatmap (relevant for Assignment 4)
@@ -76,25 +75,18 @@ void tick_thread(std::vector<Ped::Tagent *>::iterator start,
   }
 }
 
-struct ThreadArgs {
-  Ped::Model *model;
-  int thread_id;
-};
-
-void *Ped::Model::worker_entry(void *arg) {
-  ThreadArgs *args = (ThreadArgs *)arg;
-  args->model->worker_logic(args->thread_id);
-  delete args; // Clean up the argument
+void *Ped::Model::thread_entry(void *arg) {
+  ThreadArg *t_arg = (ThreadArg *)arg;
+  t_arg->model->worker_loop(t_arg->id);
+  delete t_arg;
   return NULL;
 }
 
-void Ped::Model::worker_logic(int thread_id) {
-  int last_tick_seen = 0;
-
+void Ped::Model::worker_loop(int thread_id) {
+  int local_tick = 0;
   while (true) {
     pthread_mutex_lock(&mutex);
-
-    while (!shutdown && tick_serial == last_tick_seen) {
+    while (local_tick == tick_counter && !shutdown) {
       pthread_cond_wait(&cond_start, &mutex);
     }
 
@@ -103,9 +95,10 @@ void Ped::Model::worker_logic(int thread_id) {
       break;
     }
 
-    last_tick_seen = tick_serial;
+    local_tick = tick_counter;
     pthread_mutex_unlock(&mutex);
 
+    // Work
     int chunk_size = agents.size() / num_threads;
     int start = thread_id * chunk_size;
     int end = (thread_id == num_threads - 1) ? agents.size()
@@ -117,9 +110,10 @@ void Ped::Model::worker_logic(int thread_id) {
       agents[i]->setY(agents[i]->getDesiredY());
     }
 
+    // Barrier / Signal Done
     pthread_mutex_lock(&mutex);
-    threads_finished++;
-    if (threads_finished == num_threads) {
+    finished_threads++;
+    if (finished_threads == num_threads) {
       pthread_cond_signal(&cond_done);
     }
     pthread_mutex_unlock(&mutex);
@@ -148,10 +142,10 @@ void Ped::Model::tick() {
   }
   case PTHREAD: {
     pthread_mutex_lock(&mutex);
-    threads_finished = 0;
-    tick_serial++;
+    tick_counter++;
+    finished_threads = 0;
     pthread_cond_broadcast(&cond_start);
-    while (threads_finished < num_threads) {
+    while (finished_threads < num_threads) {
       pthread_cond_wait(&cond_done, &mutex);
     }
     pthread_mutex_unlock(&mutex);
