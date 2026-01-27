@@ -47,11 +47,6 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
     if (num_threads == 0)
       num_threads = 4;
 
-    // 2. Initialize Synchronization Primitives
-    pthread_mutex_init(&mutex, NULL);
-    pthread_cond_init(&cond_start, NULL);
-    pthread_cond_init(&cond_done, NULL);
-
     tick_counter = 0;
     finished_threads = 0;
     shutdown = false;
@@ -85,18 +80,16 @@ void *Ped::Model::thread_entry(void *arg) {
 void Ped::Model::worker_loop(int thread_id) {
   int local_tick = 0;
   while (true) {
-    pthread_mutex_lock(&mutex);
-    while (local_tick == tick_counter && !shutdown) {
-      pthread_cond_wait(&cond_start, &mutex);
+    // Spin wait for new tick
+    while (tick_counter.load(std::memory_order_acquire) == local_tick && !shutdown) {
+        // busy wait
     }
 
     if (shutdown) {
-      pthread_mutex_unlock(&mutex);
       break;
     }
 
-    local_tick = tick_counter;
-    pthread_mutex_unlock(&mutex);
+    local_tick = tick_counter.load(std::memory_order_relaxed);
 
     // Work
     int chunk_size = agents.size() / num_threads;
@@ -110,13 +103,8 @@ void Ped::Model::worker_loop(int thread_id) {
       agents[i]->setY(agents[i]->getDesiredY());
     }
 
-    // Barrier / Signal Done
-    pthread_mutex_lock(&mutex);
-    finished_threads++;
-    if (finished_threads == num_threads) {
-      pthread_cond_signal(&cond_done);
-    }
-    pthread_mutex_unlock(&mutex);
+    // Signal Done
+    finished_threads.fetch_add(1, std::memory_order_release);
   }
 }
 
@@ -141,14 +129,13 @@ void Ped::Model::tick() {
     break;
   }
   case PTHREAD: {
-    pthread_mutex_lock(&mutex);
-    tick_counter++;
-    finished_threads = 0;
-    pthread_cond_broadcast(&cond_start);
-    while (finished_threads < num_threads) {
-      pthread_cond_wait(&cond_done, &mutex);
+    finished_threads.store(0, std::memory_order_release);
+    tick_counter.fetch_add(1, std::memory_order_release);
+    
+    // Busy wait for all threads to finish
+    while (finished_threads.load(std::memory_order_acquire) < num_threads) {
+        // busy wait
     }
-    pthread_mutex_unlock(&mutex);
     break;
   }
   default: {

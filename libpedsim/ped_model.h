@@ -16,6 +16,7 @@
 #include <pthread.h>
 #include <set>
 #include <vector>
+#include <atomic>
 
 namespace Ped {
 class Tagent;
@@ -68,12 +69,8 @@ private:
   std::vector<pthread_t> threads;
   int num_threads;
 
-  pthread_mutex_t mutex;
-  pthread_cond_t cond_start;
-  pthread_cond_t cond_done;
-
-  int tick_counter;
-  int finished_threads;
+  std::atomic<int> tick_counter;
+  std::atomic<int> finished_threads;
   bool shutdown;
 
   struct ThreadArg {
