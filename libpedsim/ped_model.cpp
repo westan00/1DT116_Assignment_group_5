@@ -47,19 +47,50 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
   setupHeatmapSeq();
 }
 
-void tick_thread(std::vector<Ped::Tagent *>::iterator start,
-                 std::vector<Ped::Tagent *>::iterator end) {
-  for (auto it = start; it != end; ++it) {
-    (*it)->computeNextDesiredPosition();
-    (*it)->setX((*it)->getDesiredX());
-    (*it)->setY((*it)->getDesiredY());
+// void tick_thread(std::vector<Ped::Tagent *>::iterator start,
+// std::vector<Ped::Tagent *>::iterator end) {
+// for (auto it = start; it != end; ++it) {
+//(*it)->computeNextDesiredPosition();
+//(*it)->setX((*it)->getDesiredX());
+//(*it)->setY((*it)->getDesiredY());
+//}
+//}
+
+void Ped::Model::tick_thread(const int k, int id) {
+  for (int i = id; i < agents.size(); i += k) {
+    auto *agent = agents[i];
+    agent->computeNextDesiredPosition();
+    agent->setX(agent->getDesiredX());
+    agent->setY(agent->getDesiredY());
   }
+}
+
+struct BarrierData {
+  pthread_barrier_t start_barrier;
+  pthread_barrier_t done_barrier;
+  Ped::Model *model;
+  int num_threads;
+  bool running;
+};
+
+static BarrierData bd;
+
+void *barrier_worker(void *arg) {
+  long id = (long)arg;
+  BarrierData *data = &bd;
+
+  while (data->running) {
+    pthread_barrier_wait(&data->start_barrier);
+    data->model->tick_thread(data->num_threads, id);
+    pthread_barrier_wait(&data->done_barrier);
+  }
+  return NULL;
 }
 
 void Ped::Model::tick() {
   // EDIT HERE FOR ASSIGNMENT 1
   switch (this->implementation) {
-  case SEQ: {
+  case Ped::SEQ: {
     for (Ped::Tagent *agent : agents) {
       agent->computeNextDesiredPosition();
       agent->setX(agent->getDesiredX());
@@ -67,7 +98,7 @@ void Ped::Model::tick() {
     }
     break;
   }
-  case OMP: {
+  case Ped::OMP: {
 #pragma omp parallel for default(none) shared(agents)
     for (int i = 0; i < agents.size(); ++i) {
       agents[i]->computeNextDesiredPosition();
@@ -76,45 +107,60 @@ void Ped::Model::tick() {
     }
     break;
   }
-  case PTHREAD: {
-    struct ThreadArg {
-      std::vector<Ped::Tagent *>::iterator start;
-      std::vector<Ped::Tagent *>::iterator end;
-    };
-    unsigned int num_threads = std::thread::hardware_concurrency();
-    if (num_threads == 0)
-      num_threads = 8;
+  case Ped::PTHREAD: {
+    static bool initialized = false;
 
-    std::vector<pthread_t> threads(num_threads);
-    std::vector<ThreadArg> thread_args(num_threads);
-    int chunk_size = agents.size() / num_threads;
+    if (!initialized) {
+      char *env = getenv("PTHREAD_NUM_THREADS");
+      bd.num_threads = env ? atoi(env) : 8;
+      bd.model = this;
+      bd.running = true;
 
-    auto start = agents.begin();
-    for (unsigned int i = 0; i < num_threads; ++i) {
-      auto end = start + chunk_size;
-      if (i == num_threads - 1) {
-        end = agents.end();
+      pthread_barrier_init(&bd.start_barrier, NULL, bd.num_threads + 1);
+      pthread_barrier_init(&bd.done_barrier, NULL, bd.num_threads + 1);
+
+      pthread_t t;
+      for (long i = 0; i < bd.num_threads; i++) {
+        pthread_create(&t, NULL, barrier_worker, (void *)i);
       }
-
-      thread_args[i].start = start;
-      thread_args[i].end = end;
-
-      pthread_create(
-          &threads[i], NULL,
-          [](void *arg) -> void * {
-            ThreadArg *t_arg = (ThreadArg *)arg;
-            tick_thread(t_arg->start, t_arg->end);
-            return NULL;
-          },
-          &thread_args[i]);
-      start = end;
+      initialized = true;
     }
 
-    for (unsigned int i = 0; i < num_threads; ++i) {
-      pthread_join(threads[i], NULL);
-    }
+    pthread_barrier_wait(&bd.start_barrier);
+    pthread_barrier_wait(&bd.done_barrier);
 
     break;
+    // struct ThreadArg {
+    // std::vector<Ped::Tagent *>::iterator start;
+    // std::vector<Ped::Tagent *>::iterator end;
+    //};
+
+    // unsigned int num_threads = std::thread::hardware_concurrency();
+    // if (num_threads == 0)
+    // num_threads = 8;
+
+    // int chunk_size = agents.size() / num_threads;
+    // std::vector<pthread_t> threads(num_threads);
+    // std::vector<ThreadArg> thread_args(num_threads);
+
+    // auto start = agents.begin();
+    // for (unsigned int i = 0; i < num_threads - 1; ++i) {
+    // auto end = start + chunk_size;
+    // thread_args[i].start = start;
+    // thread_args[i].end = end;
+
+    // pthread_create(
+    //&threads[i], NULL,
+    //[](void *arg) -> void * {
+    // ThreadArg *t_arg = (ThreadArg *)arg;
+    // tick_thread(t_arg->start, t_arg->end);
+    // return NULL;
+    //},
+    //&thread_args[i]);
+
+    // start = end;
+    // break;
+    //}
   }
   default: {
     for (Ped::Tagent *agent : agents) {
