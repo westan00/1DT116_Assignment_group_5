@@ -13,7 +13,6 @@
 #include <omp.h>
 #include <pthread.h>
 #include <stack>
-#include <sys/_pthread/_pthread_t.h>
 #include <thread>
 #include <vector>
 
