@@ -39,6 +39,10 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
   // Set up destinations
   destinations = std::vector<Ped::Twaypoint *>(destinationsInScenario.begin(),
                                                destinationsInScenario.end());
+
+  // Sets the chosen implemenation. Standard in the given code is SEQ
+  this->implementation = implementation;
+
   // Set up heatmap (relevant for Assignment 4)
   setupHeatmapSeq();
 }
