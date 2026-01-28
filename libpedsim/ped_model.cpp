@@ -13,6 +13,7 @@
 #include <omp.h>
 #include <pthread.h>
 #include <stack>
+#include <sys/_pthread/_pthread_t.h>
 #include <thread>
 #include <vector>
 
@@ -65,10 +66,10 @@ void Ped::Model::tick() {
   }
   case OMP: {
 #pragma omp parallel for default(none) shared(agents)
-    for (Ped::Tagent *agent : agents) {
-      agent->computeNextDesiredPosition();
-      agent->setX(agent->getDesiredX());
-      agent->setY(agent->getDesiredY());
+    for (int i = 0; i < agents.size(); ++i) {
+      agents[i]->computeNextDesiredPosition();
+      agents[i]->setX(agents[i]->getDesiredX());
+      agents[i]->setY(agents[i]->getDesiredY());
     }
     break;
   }
@@ -79,16 +80,22 @@ void Ped::Model::tick() {
     };
     unsigned int num_threads = std::thread::hardware_concurrency();
     if (num_threads == 0)
-      num_threads = 4;
+      num_threads = 8;
+
+    std::vector<pthread_t> threads(num_threads);
+    std::vector<ThreadArg> thread_args(num_threads);
     int chunk_size = agents.size() / num_threads;
-    std::vector<pthread_t> threads(num_threads - 1);
-    std::vector<ThreadArg> thread_args(num_threads - 1);
 
     auto start = agents.begin();
-    for (unsigned int i = 0; i < num_threads - 1; ++i) {
+    for (unsigned int i = 0; i < num_threads; ++i) {
       auto end = start + chunk_size;
+      if (i == num_threads - 1) {
+        end = agents.end();
+      }
+
       thread_args[i].start = start;
       thread_args[i].end = end;
+
       pthread_create(
           &threads[i], NULL,
           [](void *arg) -> void * {
@@ -98,6 +105,10 @@ void Ped::Model::tick() {
           },
           &thread_args[i]);
       start = end;
+    }
+
+    for (unsigned int i = 0; i < num_threads; ++i) {
+      pthread_join(threads[i], NULL);
     }
 
     break;
