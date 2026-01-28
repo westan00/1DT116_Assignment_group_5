@@ -12,11 +12,11 @@
 #define _ped_model_h_
 
 #include "ped_agent.h"
+#include <atomic>
 #include <map>
 #include <pthread.h>
 #include <set>
 #include <vector>
-#include <atomic>
 
 namespace Ped {
 class Tagent;
@@ -64,22 +64,6 @@ private:
 
   // Moves an agent towards its next position
   void move(Ped::Tagent *agent);
-
-  // Pthreads
-  std::vector<pthread_t> threads;
-  int num_threads;
-
-  std::atomic<int> tick_counter;
-  std::atomic<int> finished_threads;
-  bool shutdown;
-
-  struct ThreadArg {
-    Model *model;
-    int id;
-  };
-
-  static void *thread_entry(void *arg);
-  void worker_loop(int thread_id);
 
   ////////////
   /// Everything below here won't be relevant until Assignment 3
