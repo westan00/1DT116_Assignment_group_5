@@ -39,6 +39,7 @@ public:
   // Returns the agents of this scenario
   const std::vector<Tagent *> &getAgents() const { return agents; };
 
+  // Thread work function for pthread
   void tick_thread(const int num_threads, int id);
 
   // Adds an agent to the tree structure

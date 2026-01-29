@@ -47,6 +47,9 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
   setupHeatmapSeq();
 }
 
+///////////////////////////////////////
+// NEW THREADS EACH TICK IMPLEMENTATION FOR PTHREAD
+////////////////////////////////////
 // void tick_thread(std::vector<Ped::Tagent *>::iterator start,
 // std::vector<Ped::Tagent *>::iterator end) {
 // for (auto it = start; it != end; ++it) {
@@ -56,7 +59,9 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
 //}
 //}
 
-// ROUND ROBIN IMPLEMENTATION
+/////////////////////////////
+// ROUND ROBIN IMPLEMENTATION FOR PTHREAD
+////////////////////////////
 // void Ped::Model::tick_thread(const int num_threads, int id) {
 // for (int i = id; i < agents.size(); i += num_threads) {
 // auto *agent = agents[i];
@@ -66,7 +71,9 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
 //}
 //}
 
-// CHUNK IMPLEMENTATION
+/////////////////////////
+/// CHUNK IMPLEMENTATION FOR PTHREAD
+//////////////////
 void Ped::Model::tick_thread(const int num_threads, int id) {
   int n_agents = agents.size();
   int chunk_size = n_agents / num_threads;
@@ -150,6 +157,11 @@ void Ped::Model::tick() {
     pthread_barrier_wait(&bd.done_barrier);
 
     break;
+
+    //////////////////////
+    //// NEW THREADS EACH TICK IMPLEMENTATION BELOW
+    //////////////////////
+
     // struct ThreadArg {
     // std::vector<Ped::Tagent *>::iterator start;
     // std::vector<Ped::Tagent *>::iterator end;
@@ -157,17 +169,6 @@ void Ped::Model::tick() {
 
     // char *env = getenv("PTHREAD_NUM_THREADS");
     // unsigned int num_threads = env ? atoi(env) : 8;
-
-    // static bool initialized = false;
-    // if (!initialized) {
-    // cout << "Number of threads: " << num_threads;
-    // cout << "\n";
-    // initialized = true;
-    //}
-
-    //// unsigned int num_threads = std::thread::hardware_concurrency();
-    //// if (num_threads == 0)
-    //// 	num_threads = 8;
 
     // int chunk_size = agents.size() / num_threads;
     // int remainder = agents.size() % num_threads;
