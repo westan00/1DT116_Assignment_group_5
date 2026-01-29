@@ -72,7 +72,7 @@ void Ped::Model::tick_thread(const int num_threads, int id) {
   int chunk_size = n_agents / num_threads;
   int remainder = n_agents % num_threads;
 
-  int start = id * chunk_size + (id < remainder ? 1 : 0);
+  int start = id * chunk_size + (id < remainder ? id : remainder);
   int end = start + chunk_size + (id < remainder ? 1 : 0);
 
   for (int i = start; i < end; ++i) {
