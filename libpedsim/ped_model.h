@@ -39,7 +39,7 @@ public:
   // Returns the agents of this scenario
   const std::vector<Tagent *> &getAgents() const { return agents; };
 
-  void tick_thread(const int k, int id);
+  void tick_thread(const int num_threads, int id);
 
   // Adds an agent to the tree structure
   void placeAgent(const Ped::Tagent *a);

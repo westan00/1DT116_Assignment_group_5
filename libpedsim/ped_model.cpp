@@ -56,8 +56,26 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
 //}
 //}
 
-void Ped::Model::tick_thread(const int k, int id) {
-  for (int i = id; i < agents.size(); i += k) {
+// ROUND ROBIN IMPLEMENTATION
+// void Ped::Model::tick_thread(const int num_threads, int id) {
+// for (int i = id; i < agents.size(); i += num_threads) {
+// auto *agent = agents[i];
+// agent->computeNextDesiredPosition();
+// agent->setX(agent->getDesiredX());
+// agent->setY(agent->getDesiredY());
+//}
+//}
+
+// CHUNK IMPLEMENTATION
+void Ped::Model::tick_thread(const int num_threads, int id) {
+  int n_agents = agents.size();
+  int chunk_size = n_agents / num_threads;
+  int remainder = n_agents % num_threads;
+
+  int start = id * chunk_size + (id < remainder ? 1 : 0);
+  int end = start + chunk_size + (id < remainder ? 1 : 0);
+
+  for (int i = start; i < end; ++i) {
     auto *agent = agents[i];
     agent->computeNextDesiredPosition();
     agent->setX(agent->getDesiredX());
@@ -113,6 +131,8 @@ void Ped::Model::tick() {
     if (!initialized) {
       char *env = getenv("PTHREAD_NUM_THREADS");
       bd.num_threads = env ? atoi(env) : 8;
+      cout << "Number of threads: " << bd.num_threads;
+      cout << "\n";
       bd.model = this;
       bd.running = true;
 
@@ -135,17 +155,30 @@ void Ped::Model::tick() {
     // std::vector<Ped::Tagent *>::iterator end;
     //};
 
-    // unsigned int num_threads = std::thread::hardware_concurrency();
-    // if (num_threads == 0)
-    // num_threads = 8;
+    // char *env = getenv("PTHREAD_NUM_THREADS");
+    // unsigned int num_threads = env ? atoi(env) : 8;
+
+    // static bool initialized = false;
+    // if (!initialized) {
+    // cout << "Number of threads: " << num_threads;
+    // cout << "\n";
+    // initialized = true;
+    //}
+
+    //// unsigned int num_threads = std::thread::hardware_concurrency();
+    //// if (num_threads == 0)
+    //// 	num_threads = 8;
 
     // int chunk_size = agents.size() / num_threads;
+    // int remainder = agents.size() % num_threads;
+
     // std::vector<pthread_t> threads(num_threads);
     // std::vector<ThreadArg> thread_args(num_threads);
 
     // auto start = agents.begin();
-    // for (unsigned int i = 0; i < num_threads - 1; ++i) {
-    // auto end = start + chunk_size;
+    // for (unsigned int i = 0; i < num_threads; ++i) {
+    // int current_chunk = chunk_size + (i < remainder ? 1 : 0);
+    // auto end = start + current_chunk;
     // thread_args[i].start = start;
     // thread_args[i].end = end;
 
@@ -159,8 +192,11 @@ void Ped::Model::tick() {
     //&thread_args[i]);
 
     // start = end;
-    // break;
     //}
+    // for (unsigned int i = 0; i < num_threads; ++i) {
+    // pthread_join(threads[i], NULL);
+    //}
+    // break;
   }
   default: {
     for (Ped::Tagent *agent : agents) {
