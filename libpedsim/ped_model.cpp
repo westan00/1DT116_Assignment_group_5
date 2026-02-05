@@ -235,7 +235,8 @@ void Ped::Model::tick() {
     // break;
   }
   case Ped::VECTOR: {
-    // 1. Update destinations if reached (Sequential update of persistent SoA)
+    // 1. Parallel update of destinations if reached
+#pragma omp parallel for
     for (int i = 0; i < num_agents; ++i) {
       float diffX = destX[i] - agentX[i];
       float diffY = destY[i] - agentY[i];
@@ -252,7 +253,8 @@ void Ped::Model::tick() {
       }
     }
 
-    // 2. Vectorized calculation of next positions using AVX-512 (16 agents at once)
+    // 2. Parallelized Vectorized calculation (OMP + AVX-512)
+#pragma omp parallel for
     for (int i = 0; i < n_padded; i += 16) {
       __m512 ax = _mm512_load_ps(&agentX[i]);
       __m512 ay = _mm512_load_ps(&agentY[i]);
@@ -262,14 +264,11 @@ void Ped::Model::tick() {
       __m512 diffX = _mm512_sub_ps(dx, ax);
       __m512 diffY = _mm512_sub_ps(dy, ay);
 
-      // distance = sqrt(dx*dx + dy*dy)
       __m512 len = _mm512_sqrt_ps(_mm512_add_ps(_mm512_mul_ps(diffX, diffX), _mm512_mul_ps(diffY, diffY)));
 
-      // AVX-512 Masking: only divide if len > 0
       __m512 zero = _mm512_setzero_ps();
       __mmask16 mask = _mm512_cmp_ps_mask(len, zero, _CMP_GT_OQ);
 
-      // Masked division: results are 0.0 where mask is false (len <= 0)
       __m512 stepX = _mm512_maskz_div_ps(mask, diffX, len);
       __m512 stepY = _mm512_maskz_div_ps(mask, diffY, len);
 
@@ -280,7 +279,8 @@ void Ped::Model::tick() {
       _mm512_store_ps(&agentY[i], ay);
     }
 
-    // 3. Sync back to Tagent objects for consistency (e.g., visualization)
+    // 3. Parallel Sync back to Tagent objects
+#pragma omp parallel for
     for (int i = 0; i < num_agents; ++i) {
       agents[i]->setX((int)round(agentX[i]));
       agents[i]->setY((int)round(agentY[i]));
