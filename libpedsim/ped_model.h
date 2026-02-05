@@ -72,6 +72,8 @@ private:
   float *destX;
   float *destY;
   float *destR;
+  float *desiredX;
+  float *desiredY;
   int num_agents;
   int n_padded;
 

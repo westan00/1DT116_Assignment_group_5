@@ -53,6 +53,8 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
   posix_memalign((void **)&destX, 64, n_padded * sizeof(float));
   posix_memalign((void **)&destY, 64, n_padded * sizeof(float));
   posix_memalign((void **)&destR, 64, n_padded * sizeof(float));
+  posix_memalign((void **)&desiredX, 64, n_padded * sizeof(float));
+  posix_memalign((void **)&desiredY, 64, n_padded * sizeof(float));
 
   for (int i = 0; i < n_padded; ++i) {
     if (i < num_agents) {
@@ -68,6 +70,9 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
         destY[i] = agentY[i];
         destR[i] = 0;
       }
+      desiredX[i] = agentX[i];
+      desiredY[i] = agentY[i];
+      agents[i]->setSoAPointers(&agentX[i], &agentY[i], &destX[i], &destY[i], &destR[i], &desiredX[i], &desiredY[i]);
     } else {
       // Padding
       agentX[i] = 0;
@@ -75,6 +80,8 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
       destX[i] = 0;
       destY[i] = 0;
       destR[i] = 0;
+      desiredX[i] = 0;
+      desiredY[i] = 0;
     }
   }
 
@@ -238,19 +245,7 @@ void Ped::Model::tick() {
     // 1. Parallel update of destinations if reached
 #pragma omp parallel for
     for (int i = 0; i < num_agents; ++i) {
-      float diffX = destX[i] - agentX[i];
-      float diffY = destY[i] - agentY[i];
-      float len = sqrt(diffX * diffX + diffY * diffY);
-
-      if (len < destR[i]) {
-        agents[i]->computeNextDesiredPosition();
-        Ped::Twaypoint *wp = agents[i]->getDestination();
-        if (wp) {
-          destX[i] = wp->getx();
-          destY[i] = wp->gety();
-          destR[i] = wp->getr();
-        }
-      }
+      agents[i]->updateWaypoint();
     }
 
     // 2. Parallelized Vectorized calculation (OMP + AVX-512)
@@ -264,7 +259,8 @@ void Ped::Model::tick() {
       __m512 diffX = _mm512_sub_ps(dx, ax);
       __m512 diffY = _mm512_sub_ps(dy, ay);
 
-      __m512 len = _mm512_sqrt_ps(_mm512_add_ps(_mm512_mul_ps(diffX, diffX), _mm512_mul_ps(diffY, diffY)));
+      __m512 lenSq = _mm512_add_ps(_mm512_mul_ps(diffX, diffX), _mm512_mul_ps(diffY, diffY));
+      __m512 len = _mm512_sqrt_ps(lenSq);
 
       __m512 zero = _mm512_setzero_ps();
       __mmask16 mask = _mm512_cmp_ps_mask(len, zero, _CMP_GT_OQ);
@@ -272,18 +268,21 @@ void Ped::Model::tick() {
       __m512 stepX = _mm512_maskz_div_ps(mask, diffX, len);
       __m512 stepY = _mm512_maskz_div_ps(mask, diffY, len);
 
-      ax = _mm512_add_ps(ax, stepX);
-      ay = _mm512_add_ps(ay, stepY);
+      __m512 desX = _mm512_add_ps(ax, stepX);
+      __m512 desY = _mm512_add_ps(ay, stepY);
 
-      _mm512_store_ps(&agentX[i], ax);
-      _mm512_store_ps(&agentY[i], ay);
-    }
+      // In SEQ mode, getDesiredX() returns (int)round(desX)
+      // and then setX(getDesiredX()) sets agentX to that int.
+      // To match SEQ exactly, we should round here.
+      __m512 roundedDesX = _mm512_roundscale_ps(desX, _MM_FROUND_TO_NEAREST_INT |_MM_FROUND_NO_EXC);
+      __m512 roundedDesY = _mm512_roundscale_ps(desY, _MM_FROUND_TO_NEAREST_INT |_MM_FROUND_NO_EXC);
 
-    // 3. Parallel Sync back to Tagent objects
-#pragma omp parallel for
-    for (int i = 0; i < num_agents; ++i) {
-      agents[i]->setX((int)round(agentX[i]));
-      agents[i]->setY((int)round(agentY[i]));
+      _mm512_store_ps(&desiredX[i], roundedDesX);
+      _mm512_store_ps(&desiredY[i], roundedDesY);
+
+      // Move the agents
+      _mm512_store_ps(&agentX[i], roundedDesX);
+      _mm512_store_ps(&agentY[i], roundedDesY);
     }
     break;
   }
@@ -383,6 +382,8 @@ Ped::Model::~Model() {
   free(destX);
   free(destY);
   free(destR);
+  free(desiredX);
+  free(desiredY);
 
   std::for_each(agents.begin(), agents.end(),
                 [](Ped::Tagent *agent) { delete agent; });

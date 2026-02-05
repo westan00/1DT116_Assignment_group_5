@@ -20,8 +20,22 @@ Ped::Tagent::Tagent(double posX, double posY) {
 }
 
 void Ped::Tagent::init(int posX, int posY) {
-	x = posX;
-	y = posY;
+	staticX = (float)posX;
+	staticY = (float)posY;
+	staticDesiredPositionX = (float)posX;
+	staticDesiredPositionY = (float)posY;
+	staticDestX = 0;
+	staticDestY = 0;
+	staticDestR = 0;
+
+	p_x = &staticX;
+	p_y = &staticY;
+	p_desiredPositionX = &staticDesiredPositionX;
+	p_desiredPositionY = &staticDesiredPositionY;
+	p_destX = &staticDestX;
+	p_destY = &staticDestY;
+	p_destR = &staticDestR;
+
 	destination = NULL;
 	lastDestination = NULL;
 }
@@ -34,11 +48,20 @@ void Ped::Tagent::computeNextDesiredPosition() {
 		return;
 	}
 
-	double diffX = destination->getx() - x;
-	double diffY = destination->gety() - y;
+	double diffX = destination->getx() - *p_x;
+	double diffY = destination->gety() - *p_y;
 	double len = sqrt(diffX * diffX + diffY * diffY);
-	desiredPositionX = (int)round(x + diffX / len);
-	desiredPositionY = (int)round(y + diffY / len);
+	*p_desiredPositionX = (float)round(*p_x + diffX / len);
+	*p_desiredPositionY = (float)round(*p_y + diffY / len);
+}
+
+void Ped::Tagent::updateWaypoint() {
+	destination = getNextDestination();
+	if (destination != NULL) {
+		*p_destX = (float)destination->getx();
+		*p_destY = (float)destination->gety();
+		*p_destR = (float)destination->getr();
+	}
 }
 
 void Ped::Tagent::addWaypoint(Twaypoint* wp) {
@@ -51,8 +74,8 @@ Ped::Twaypoint* Ped::Tagent::getNextDestination() {
 
 	if (destination != NULL) {
 		// compute if agent reached its current destination
-		double diffX = destination->getx() - x;
-		double diffY = destination->gety() - y;
+		double diffX = destination->getx() - *p_x;
+		double diffY = destination->gety() - *p_y;
 		double length = sqrt(diffX * diffX + diffY * diffY);
 		agentReachedDestination = length < destination->getr();
 	}

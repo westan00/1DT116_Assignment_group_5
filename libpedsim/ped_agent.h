@@ -30,20 +30,23 @@ namespace Ped {
 		Tagent(double posX, double posY);
 
 		// Returns the coordinates of the desired position
-		int getDesiredX() const { return desiredPositionX; }
-		int getDesiredY() const { return desiredPositionY; }
+		int getDesiredX() const { return (int)round(*p_desiredPositionX); }
+		int getDesiredY() const { return (int)round(*p_desiredPositionY); }
 
 		// Sets the agent's position
-		void setX(int newX) { x = newX; }
-		void setY(int newY) { y = newY; }
+		void setX(int newX) { *p_x = (float)newX; }
+		void setY(int newY) { *p_y = (float)newY; }
 
 		// Update the position according to get closer
 		// to the current destination
 		void computeNextDesiredPosition();
 
+		// Update only the waypoint if reached
+		void updateWaypoint();
+
 		// Position of agent defined by x and y
-		int getX() const { return x; };
-		int getY() const { return y; };
+		int getX() const { return (int)round(*p_x); };
+		int getY() const { return (int)round(*p_y); };
 
 		// Adds a new waypoint to reach for this agent
 		void addWaypoint(Twaypoint* wp);
@@ -51,16 +54,41 @@ namespace Ped {
 		// Returns the current destination
 		Twaypoint* getDestination() const { return destination; }
 
+		// Link to SoA storage in Model
+		void setSoAPointers(float* x, float* y, float* dX, float* dY, float* dR, float* desX, float* desY) {
+			p_x = x; p_y = y;
+			p_destX = dX; p_destY = dY; p_destR = dR;
+			p_desiredPositionX = desX; p_desiredPositionY = desY;
+			// Initialize linked data with current values
+			*p_x = staticX;
+			*p_y = staticY;
+			if (destination) {
+				*p_destX = destination->getx();
+				*p_destY = destination->gety();
+				*p_destR = destination->getr();
+			}
+		}
+
 	private:
 		Tagent() {};
 
-		// The agent's current position
-		int x;
-		int y;
+		// The agent's position (statically stored if not linked to SoA)
+		float staticX;
+		float staticY;
+		float staticDesiredPositionX;
+		float staticDesiredPositionY;
+		float staticDestX;
+		float staticDestY;
+		float staticDestR;
 
-		// The agent's desired next position
-		int desiredPositionX;
-		int desiredPositionY;
+		// Pointers to the active data (either static or in Model's SoA)
+		float *p_x;
+		float *p_y;
+		float *p_desiredPositionX;
+		float *p_desiredPositionY;
+		float *p_destX;
+		float *p_destY;
+		float *p_destR;
 
 		// The current destination (may require several steps to reach)
 		Twaypoint* destination;
