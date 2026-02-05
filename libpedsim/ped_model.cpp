@@ -46,13 +46,13 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
 
   // Allocate and initialize SoA arrays for VECTOR implementation
   num_agents = agents.size();
-  n_padded = (num_agents + 3) / 4 * 4; // Pad to multiple of 4
+  n_padded = (num_agents + 15) / 16 * 16; // Pad to multiple of 16 for AVX-512
 
-  posix_memalign((void **)&agentX, 16, n_padded * sizeof(float));
-  posix_memalign((void **)&agentY, 16, n_padded * sizeof(float));
-  posix_memalign((void **)&destX, 16, n_padded * sizeof(float));
-  posix_memalign((void **)&destY, 16, n_padded * sizeof(float));
-  posix_memalign((void **)&destR, 16, n_padded * sizeof(float));
+  posix_memalign((void **)&agentX, 64, n_padded * sizeof(float));
+  posix_memalign((void **)&agentY, 64, n_padded * sizeof(float));
+  posix_memalign((void **)&destX, 64, n_padded * sizeof(float));
+  posix_memalign((void **)&destY, 64, n_padded * sizeof(float));
+  posix_memalign((void **)&destR, 64, n_padded * sizeof(float));
 
   for (int i = 0; i < n_padded; ++i) {
     if (i < num_agents) {
@@ -252,34 +252,32 @@ void Ped::Model::tick() {
       }
     }
 
-    // 2. Vectorized calculation of next positions using SSE (4 agents at once)
-    for (int i = 0; i < n_padded; i += 4) {
-      __m128 ax = _mm_load_ps(&agentX[i]);
-      __m128 ay = _mm_load_ps(&agentY[i]);
-      __m128 dx = _mm_load_ps(&destX[i]);
-      __m128 dy = _mm_load_ps(&destY[i]);
+    // 2. Vectorized calculation of next positions using AVX-512 (16 agents at once)
+    for (int i = 0; i < n_padded; i += 16) {
+      __m512 ax = _mm512_load_ps(&agentX[i]);
+      __m512 ay = _mm512_load_ps(&agentY[i]);
+      __m512 dx = _mm512_load_ps(&destX[i]);
+      __m512 dy = _mm512_load_ps(&destY[i]);
 
-      __m128 diffX = _mm_sub_ps(dx, ax);
-      __m128 diffY = _mm_sub_ps(dy, ay);
+      __m512 diffX = _mm512_sub_ps(dx, ax);
+      __m512 diffY = _mm512_sub_ps(dy, ay);
 
-      __m128 len = _mm_sqrt_ps(_mm_add_ps(_mm_mul_ps(diffX, diffX), _mm_mul_ps(diffY, diffY)));
+      // distance = sqrt(dx*dx + dy*dy)
+      __m512 len = _mm512_sqrt_ps(_mm512_add_ps(_mm512_mul_ps(diffX, diffX), _mm512_mul_ps(diffY, diffY)));
 
-      // Avoid division by zero
-      __m128 zero = _mm_setzero_ps();
-      __m128 mask = _mm_cmpgt_ps(len, zero);
+      // AVX-512 Masking: only divide if len > 0
+      __m512 zero = _mm512_setzero_ps();
+      __mmask16 mask = _mm512_cmp_ps_mask(len, zero, _CMP_GT_OQ);
 
-      __m128 stepX = _mm_div_ps(diffX, len);
-      __m128 stepY = _mm_div_ps(diffY, len);
+      // Masked division: results are 0.0 where mask is false (len <= 0)
+      __m512 stepX = _mm512_maskz_div_ps(mask, diffX, len);
+      __m512 stepY = _mm512_maskz_div_ps(mask, diffY, len);
 
-      // Masked steps
-      stepX = _mm_and_ps(mask, stepX);
-      stepY = _mm_and_ps(mask, stepY);
+      ax = _mm512_add_ps(ax, stepX);
+      ay = _mm512_add_ps(ay, stepY);
 
-      ax = _mm_add_ps(ax, stepX);
-      ay = _mm_add_ps(ay, stepY);
-
-      _mm_store_ps(&agentX[i], ax);
-      _mm_store_ps(&agentY[i], ay);
+      _mm512_store_ps(&agentX[i], ax);
+      _mm512_store_ps(&agentY[i], ay);
     }
 
     // 3. Sync back to Tagent objects for consistency (e.g., visualization)

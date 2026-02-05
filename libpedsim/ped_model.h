@@ -12,7 +12,7 @@
 #define _ped_model_h_
 
 #include "ped_agent.h"
-#include <xmmintrin.h>
+#include <immintrin.h>
 #include <atomic>
 #include <map>
 #include <pthread.h>
