@@ -9,6 +9,7 @@
 #include "ped_agent.h"
 #include "ped_waypoint.h"
 #include <algorithm>
+#include <cmath>
 #include <iostream>
 #include <omp.h>
 #include <pthread.h>
@@ -42,6 +43,29 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
 
   // Sets the chosen implemenation. Standard in the given code is SEQ
   this->implementation = implementation;
+
+  // Allocate and initialize SoA arrays for VECTOR implementation
+  int n_agents = agents.size();
+  agentX = new float[n_agents];
+  agentY = new float[n_agents];
+  destX = new float[n_agents];
+  destY = new float[n_agents];
+  destR = new float[n_agents];
+
+  for (int i = 0; i < n_agents; ++i) {
+    agentX[i] = agents[i]->getX();
+    agentY[i] = agents[i]->getY();
+    Ped::Twaypoint *wp = agents[i]->getDestination();
+    if (wp) {
+      destX[i] = wp->getx();
+      destY[i] = wp->gety();
+      destR[i] = wp->getr();
+    } else {
+      destX[i] = agentX[i];
+      destY[i] = agentY[i];
+      destR[i] = 0;
+    }
+  }
 
   // Set up heatmap (relevant for Assignment 4)
   setupHeatmapSeq();
@@ -199,6 +223,47 @@ void Ped::Model::tick() {
     //}
     // break;
   }
+  case Ped::VECTOR: {
+    int n = agents.size();
+
+    // 1. Update destinations if reached (Sequential part)
+    for (int i = 0; i < n; ++i) {
+      float diffX = destX[i] - agentX[i];
+      float diffY = destY[i] - agentY[i];
+      float len = sqrt(diffX * diffX + diffY * diffY);
+
+      if (len < destR[i]) {
+        agents[i]->computeNextDesiredPosition();
+        Ped::Twaypoint *wp = agents[i]->getDestination();
+        if (wp) {
+          destX[i] = wp->getx();
+          destY[i] = wp->gety();
+          destR[i] = wp->getr();
+        }
+      }
+    }
+
+    // 2. Vectorized calculation of next positions
+    // This loop can be auto-vectorized by the compiler
+#pragma omp simd
+    for (int i = 0; i < n; ++i) {
+      float diffX = destX[i] - agentX[i];
+      float diffY = destY[i] - agentY[i];
+      float len = sqrt(diffX * diffX + diffY * diffY);
+
+      if (len > 0) {
+        agentX[i] += diffX / len;
+        agentY[i] += diffY / len;
+      }
+    }
+
+    // 3. Sync back to Tagent objects for consistency
+    for (int i = 0; i < n; ++i) {
+      agents[i]->setX((int)round(agentX[i]));
+      agents[i]->setY((int)round(agentY[i]));
+    }
+    break;
+  }
   default: {
     for (Ped::Tagent *agent : agents) {
       agent->computeNextDesiredPosition();
@@ -290,6 +355,12 @@ void Ped::Model::cleanup() {
 }
 
 Ped::Model::~Model() {
+  delete[] agentX;
+  delete[] agentY;
+  delete[] destX;
+  delete[] destY;
+  delete[] destR;
+
   std::for_each(agents.begin(), agents.end(),
                 [](Ped::Tagent *agent) { delete agent; });
   std::for_each(destinations.begin(), destinations.end(),

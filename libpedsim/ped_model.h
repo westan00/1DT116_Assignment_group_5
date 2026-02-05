@@ -65,6 +65,13 @@ private:
   // The waypoints in this scenario
   std::vector<Twaypoint *> destinations;
 
+  // Arrays for SoA (Struct of Arrays) to support SIMD vectorization
+  float *agentX;
+  float *agentY;
+  float *destX;
+  float *destY;
+  float *destR;
+
   // Moves an agent towards its next position
   void move(Ped::Tagent *agent);
 
