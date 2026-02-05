@@ -18,6 +18,7 @@
 
 #include <vector>
 #include <deque>
+#include <cmath>
 
 using namespace std;
 
@@ -30,8 +31,8 @@ namespace Ped {
 		Tagent(double posX, double posY);
 
 		// Returns the coordinates of the desired position
-		int getDesiredX() const { return (int)round(*p_desiredPositionX); }
-		int getDesiredY() const { return (int)round(*p_desiredPositionY); }
+		int getDesiredX() const { return (int)std::round(*p_desiredPositionX); }
+		int getDesiredY() const { return (int)std::round(*p_desiredPositionY); }
 
 		// Sets the agent's position
 		void setX(int newX) { *p_x = (float)newX; }
@@ -45,8 +46,8 @@ namespace Ped {
 		void updateWaypoint();
 
 		// Position of agent defined by x and y
-		int getX() const { return (int)round(*p_x); };
-		int getY() const { return (int)round(*p_y); };
+		int getX() const { return (int)std::round(*p_x); };
+		int getY() const { return (int)std::round(*p_y); };
 
 		// Adds a new waypoint to reach for this agent
 		void addWaypoint(Twaypoint* wp);
@@ -55,19 +56,7 @@ namespace Ped {
 		Twaypoint* getDestination() const { return destination; }
 
 		// Link to SoA storage in Model
-		void setSoAPointers(float* x, float* y, float* dX, float* dY, float* dR, float* desX, float* desY) {
-			p_x = x; p_y = y;
-			p_destX = dX; p_destY = dY; p_destR = dR;
-			p_desiredPositionX = desX; p_desiredPositionY = desY;
-			// Initialize linked data with current values
-			*p_x = staticX;
-			*p_y = staticY;
-			if (destination) {
-				*p_destX = destination->getx();
-				*p_destY = destination->gety();
-				*p_destR = destination->getr();
-			}
-		}
+		void setSoAPointers(float* x, float* y, float* dX, float* dY, float* dR, float* desX, float* desY);
 
 	private:
 		Tagent() {};

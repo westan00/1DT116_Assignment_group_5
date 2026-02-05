@@ -7,7 +7,7 @@
 //
 #include "ped_agent.h"
 #include "ped_waypoint.h"
-#include <math.h>
+#include <cmath>
 
 #include <stdlib.h>
 
@@ -16,7 +16,7 @@ Ped::Tagent::Tagent(int posX, int posY) {
 }
 
 Ped::Tagent::Tagent(double posX, double posY) {
-	Ped::Tagent::init((int)round(posX), (int)round(posY));
+	Ped::Tagent::init((int)std::round(posX), (int)std::round(posY));
 }
 
 void Ped::Tagent::init(int posX, int posY) {
@@ -50,14 +50,28 @@ void Ped::Tagent::computeNextDesiredPosition() {
 
 	double diffX = destination->getx() - *p_x;
 	double diffY = destination->gety() - *p_y;
-	double len = sqrt(diffX * diffX + diffY * diffY);
-	*p_desiredPositionX = (float)round(*p_x + diffX / len);
-	*p_desiredPositionY = (float)round(*p_y + diffY / len);
+	double len = std::sqrt(diffX * diffX + diffY * diffY);
+	*p_desiredPositionX = (float)std::round(*p_x + diffX / len);
+	*p_desiredPositionY = (float)std::round(*p_y + diffY / len);
 }
 
 void Ped::Tagent::updateWaypoint() {
 	destination = getNextDestination();
 	if (destination != NULL) {
+		*p_destX = (float)destination->getx();
+		*p_destY = (float)destination->gety();
+		*p_destR = (float)destination->getr();
+	}
+}
+
+void Ped::Tagent::setSoAPointers(float* x, float* y, float* dX, float* dY, float* dR, float* desX, float* desY) {
+	p_x = x; p_y = y;
+	p_destX = dX; p_destY = dY; p_destR = dR;
+	p_desiredPositionX = desX; p_desiredPositionY = desY;
+	// Initialize linked data with current values
+	*p_x = staticX;
+	*p_y = staticY;
+	if (destination) {
 		*p_destX = (float)destination->getx();
 		*p_destY = (float)destination->gety();
 		*p_destR = (float)destination->getr();
