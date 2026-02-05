@@ -45,24 +45,35 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
   this->implementation = implementation;
 
   // Allocate and initialize SoA arrays for VECTOR implementation
-  int n_agents = agents.size();
-  agentX = new float[n_agents];
-  agentY = new float[n_agents];
-  destX = new float[n_agents];
-  destY = new float[n_agents];
-  destR = new float[n_agents];
+  num_agents = agents.size();
+  n_padded = (num_agents + 3) / 4 * 4; // Pad to multiple of 4
 
-  for (int i = 0; i < n_agents; ++i) {
-    agentX[i] = agents[i]->getX();
-    agentY[i] = agents[i]->getY();
-    Ped::Twaypoint *wp = agents[i]->getDestination();
-    if (wp) {
-      destX[i] = wp->getx();
-      destY[i] = wp->gety();
-      destR[i] = wp->getr();
+  posix_memalign((void **)&agentX, 16, n_padded * sizeof(float));
+  posix_memalign((void **)&agentY, 16, n_padded * sizeof(float));
+  posix_memalign((void **)&destX, 16, n_padded * sizeof(float));
+  posix_memalign((void **)&destY, 16, n_padded * sizeof(float));
+  posix_memalign((void **)&destR, 16, n_padded * sizeof(float));
+
+  for (int i = 0; i < n_padded; ++i) {
+    if (i < num_agents) {
+      agentX[i] = agents[i]->getX();
+      agentY[i] = agents[i]->getY();
+      Ped::Twaypoint *wp = agents[i]->getDestination();
+      if (wp) {
+        destX[i] = wp->getx();
+        destY[i] = wp->gety();
+        destR[i] = wp->getr();
+      } else {
+        destX[i] = agentX[i];
+        destY[i] = agentY[i];
+        destR[i] = 0;
+      }
     } else {
-      destX[i] = agentX[i];
-      destY[i] = agentY[i];
+      // Padding
+      agentX[i] = 0;
+      agentY[i] = 0;
+      destX[i] = 0;
+      destY[i] = 0;
       destR[i] = 0;
     }
   }
@@ -224,10 +235,8 @@ void Ped::Model::tick() {
     // break;
   }
   case Ped::VECTOR: {
-    int n = agents.size();
-
-    // 1. Update destinations if reached (Sequential part)
-    for (int i = 0; i < n; ++i) {
+    // 1. Update destinations if reached (Sequential update of persistent SoA)
+    for (int i = 0; i < num_agents; ++i) {
       float diffX = destX[i] - agentX[i];
       float diffY = destY[i] - agentY[i];
       float len = sqrt(diffX * diffX + diffY * diffY);
@@ -243,22 +252,38 @@ void Ped::Model::tick() {
       }
     }
 
-    // 2. Vectorized calculation of next positions
-    // This loop can be auto-vectorized by the compiler
-#pragma omp simd
-    for (int i = 0; i < n; ++i) {
-      float diffX = destX[i] - agentX[i];
-      float diffY = destY[i] - agentY[i];
-      float len = sqrt(diffX * diffX + diffY * diffY);
+    // 2. Vectorized calculation of next positions using SSE (4 agents at once)
+    for (int i = 0; i < n_padded; i += 4) {
+      __m128 ax = _mm_load_ps(&agentX[i]);
+      __m128 ay = _mm_load_ps(&agentY[i]);
+      __m128 dx = _mm_load_ps(&destX[i]);
+      __m128 dy = _mm_load_ps(&destY[i]);
 
-      if (len > 0) {
-        agentX[i] += diffX / len;
-        agentY[i] += diffY / len;
-      }
+      __m128 diffX = _mm_sub_ps(dx, ax);
+      __m128 diffY = _mm_sub_ps(dy, ay);
+
+      __m128 len = _mm_sqrt_ps(_mm_add_ps(_mm_mul_ps(diffX, diffX), _mm_mul_ps(diffY, diffY)));
+
+      // Avoid division by zero
+      __m128 zero = _mm_setzero_ps();
+      __m128 mask = _mm_cmpgt_ps(len, zero);
+
+      __m128 stepX = _mm_div_ps(diffX, len);
+      __m128 stepY = _mm_div_ps(diffY, len);
+
+      // Masked steps
+      stepX = _mm_and_ps(mask, stepX);
+      stepY = _mm_and_ps(mask, stepY);
+
+      ax = _mm_add_ps(ax, stepX);
+      ay = _mm_add_ps(ay, stepY);
+
+      _mm_store_ps(&agentX[i], ax);
+      _mm_store_ps(&agentY[i], ay);
     }
 
-    // 3. Sync back to Tagent objects for consistency
-    for (int i = 0; i < n; ++i) {
+    // 3. Sync back to Tagent objects for consistency (e.g., visualization)
+    for (int i = 0; i < num_agents; ++i) {
       agents[i]->setX((int)round(agentX[i]));
       agents[i]->setY((int)round(agentY[i]));
     }
@@ -355,11 +380,11 @@ void Ped::Model::cleanup() {
 }
 
 Ped::Model::~Model() {
-  delete[] agentX;
-  delete[] agentY;
-  delete[] destX;
-  delete[] destY;
-  delete[] destR;
+  free(agentX);
+  free(agentY);
+  free(destX);
+  free(destY);
+  free(destR);
 
   std::for_each(agents.begin(), agents.end(),
                 [](Ped::Tagent *agent) { delete agent; });

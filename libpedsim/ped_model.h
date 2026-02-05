@@ -12,6 +12,7 @@
 #define _ped_model_h_
 
 #include "ped_agent.h"
+#include <xmmintrin.h>
 #include <atomic>
 #include <map>
 #include <pthread.h>
@@ -71,6 +72,8 @@ private:
   float *destX;
   float *destY;
   float *destR;
+  int num_agents;
+  int n_padded;
 
   // Moves an agent towards its next position
   void move(Ped::Tagent *agent);
