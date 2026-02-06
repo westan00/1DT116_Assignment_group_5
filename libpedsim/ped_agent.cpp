@@ -56,7 +56,6 @@ void Ped::Tagent::updateWaypoint() {
   if (destination != NULL) {
     *p_destX = (float)destination->getx();
     *p_destY = (float)destination->gety();
-    *p_destR = (float)destination->getr();
   }
 }
 
