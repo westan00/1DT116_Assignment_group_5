@@ -52,7 +52,6 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
   posix_memalign((void **)&agentY, 64, n_padded * sizeof(float));
   posix_memalign((void **)&destX, 64, n_padded * sizeof(float));
   posix_memalign((void **)&destY, 64, n_padded * sizeof(float));
-  posix_memalign((void **)&destR, 64, n_padded * sizeof(float));
   posix_memalign((void **)&desiredX, 64, n_padded * sizeof(float));
   posix_memalign((void **)&desiredY, 64, n_padded * sizeof(float));
 
@@ -64,23 +63,20 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
       if (wp) {
         destX[i] = wp->getx();
         destY[i] = wp->gety();
-        destR[i] = wp->getr();
       } else {
         destX[i] = agentX[i];
         destY[i] = agentY[i];
-        destR[i] = 0;
       }
       desiredX[i] = agentX[i];
       desiredY[i] = agentY[i];
       agents[i]->setSoAPointers(&agentX[i], &agentY[i], &destX[i], &destY[i],
-                                &destR[i], &desiredX[i], &desiredY[i]);
+                                &desiredX[i], &desiredY[i]);
     } else {
       // Padding
       agentX[i] = 0;
       agentY[i] = 0;
       destX[i] = 0;
       destY[i] = 0;
-      destR[i] = 0;
       desiredX[i] = 0;
       desiredY[i] = 0;
     }
