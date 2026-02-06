@@ -72,7 +72,8 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
       }
       desiredX[i] = agentX[i];
       desiredY[i] = agentY[i];
-      agents[i]->setSoAPointers(&agentX[i], &agentY[i], &destX[i], &destY[i], &destR[i], &desiredX[i], &desiredY[i]);
+      agents[i]->setSoAPointers(&agentX[i], &agentY[i], &destX[i], &destY[i],
+                                &destR[i], &desiredX[i], &desiredY[i]);
     } else {
       // Padding
       agentX[i] = 0;
@@ -88,30 +89,6 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
   // Set up heatmap (relevant for Assignment 4)
   setupHeatmapSeq();
 }
-
-///////////////////////////////////////
-// NEW THREADS EACH TICK IMPLEMENTATION FOR PTHREAD
-////////////////////////////////////
-// void tick_thread(std::vector<Ped::Tagent *>::iterator start,
-// std::vector<Ped::Tagent *>::iterator end) {
-// for (auto it = start; it != end; ++it) {
-//(*it)->computeNextDesiredPosition();
-//(*it)->setX((*it)->getDesiredX());
-//(*it)->setY((*it)->getDesiredY());
-//}
-//}
-
-/////////////////////////////
-// ROUND ROBIN IMPLEMENTATION FOR PTHREAD
-////////////////////////////
-// void Ped::Model::tick_thread(const int num_threads, int id) {
-// for (int i = id; i < agents.size(); i += num_threads) {
-// auto *agent = agents[i];
-// agent->computeNextDesiredPosition();
-// agent->setX(agent->getDesiredX());
-// agent->setY(agent->getDesiredY());
-//}
-//}
 
 /////////////////////////
 /// CHUNK IMPLEMENTATION FOR PTHREAD
@@ -199,47 +176,6 @@ void Ped::Model::tick() {
     pthread_barrier_wait(&bd.done_barrier);
 
     break;
-
-    //////////////////////
-    //// NEW THREADS EACH TICK IMPLEMENTATION BELOW
-    //////////////////////
-
-    // struct ThreadArg {
-    // std::vector<Ped::Tagent *>::iterator start;
-    // std::vector<Ped::Tagent *>::iterator end;
-    //};
-
-    // char *env = getenv("PTHREAD_NUM_THREADS");
-    // unsigned int num_threads = env ? atoi(env) : 8;
-
-    // int chunk_size = agents.size() / num_threads;
-    // int remainder = agents.size() % num_threads;
-
-    // std::vector<pthread_t> threads(num_threads);
-    // std::vector<ThreadArg> thread_args(num_threads);
-
-    // auto start = agents.begin();
-    // for (unsigned int i = 0; i < num_threads; ++i) {
-    // int current_chunk = chunk_size + (i < remainder ? 1 : 0);
-    // auto end = start + current_chunk;
-    // thread_args[i].start = start;
-    // thread_args[i].end = end;
-
-    // pthread_create(
-    //&threads[i], NULL,
-    //[](void *arg) -> void * {
-    // ThreadArg *t_arg = (ThreadArg *)arg;
-    // tick_thread(t_arg->start, t_arg->end);
-    // return NULL;
-    //},
-    //&thread_args[i]);
-
-    // start = end;
-    //}
-    // for (unsigned int i = 0; i < num_threads; ++i) {
-    // pthread_join(threads[i], NULL);
-    //}
-    // break;
   }
   case Ped::VECTOR: {
     // 1. Parallel update of destinations if reached
@@ -247,7 +183,6 @@ void Ped::Model::tick() {
     for (int i = 0; i < num_agents; ++i) {
       agents[i]->updateWaypoint();
     }
-
     // 2. Parallelized Vectorized calculation (OMP + AVX-512)
 #pragma omp parallel for
     for (int i = 0; i < n_padded; i += 16) {
@@ -259,7 +194,8 @@ void Ped::Model::tick() {
       __m512 diffX = _mm512_sub_ps(dx, ax);
       __m512 diffY = _mm512_sub_ps(dy, ay);
 
-      __m512 lenSq = _mm512_add_ps(_mm512_mul_ps(diffX, diffX), _mm512_mul_ps(diffY, diffY));
+      __m512 lenSq = _mm512_add_ps(_mm512_mul_ps(diffX, diffX),
+                                   _mm512_mul_ps(diffY, diffY));
       __m512 len = _mm512_sqrt_ps(lenSq);
 
       __m512 zero = _mm512_setzero_ps();
@@ -274,8 +210,10 @@ void Ped::Model::tick() {
       // In SEQ mode, getDesiredX() returns (int)round(desX)
       // and then setX(getDesiredX()) sets agentX to that int.
       // To match SEQ exactly, we should round here.
-      __m512 roundedDesX = _mm512_roundscale_ps(desX, _MM_FROUND_TO_NEAREST_INT |_MM_FROUND_NO_EXC);
-      __m512 roundedDesY = _mm512_roundscale_ps(desY, _MM_FROUND_TO_NEAREST_INT |_MM_FROUND_NO_EXC);
+      __m512 roundedDesX = _mm512_roundscale_ps(
+          desX, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
+      __m512 roundedDesY = _mm512_roundscale_ps(
+          desY, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
 
       _mm512_store_ps(&desiredX[i], roundedDesX);
       _mm512_store_ps(&desiredY[i], roundedDesY);

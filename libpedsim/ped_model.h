@@ -12,8 +12,8 @@
 #define _ped_model_h_
 
 #include "ped_agent.h"
-#include <immintrin.h>
 #include <atomic>
+#include <immintrin.h>
 #include <map>
 #include <pthread.h>
 #include <set>
@@ -71,7 +71,6 @@ private:
   float *agentY;
   float *destX;
   float *destY;
-  float *destR;
   float *desiredX;
   float *desiredY;
   int num_agents;
