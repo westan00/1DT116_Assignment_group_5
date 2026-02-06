@@ -315,7 +315,6 @@ Ped::Model::~Model() {
   free(agentY);
   free(destX);
   free(destY);
-  free(destR);
   free(desiredX);
   free(desiredY);
 
