@@ -46,7 +46,11 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
 
   // Allocate and initialize SoA arrays for VECTOR implementation
   num_agents = agents.size();
-  n_padded = (num_agents + 15) / 16 * 16; // Pad to multiple of 16 for AVX-512
+  if (implementation == Ped::VECTOR) {
+    n_padded = (num_agents + 15) / 16 * 16; // Pad to multiple of 16 for AVX-512
+  } else {
+    n_padded = num_agents;
+  }
 
   posix_memalign((void **)&agentX, 64, n_padded * sizeof(float));
   posix_memalign((void **)&agentY, 64, n_padded * sizeof(float));
