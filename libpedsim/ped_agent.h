@@ -49,6 +49,9 @@ public:
   int getX() const { return (int)std::round(*p_x); };
   int getY() const { return (int)std::round(*p_y); };
 
+  int getInitialX() const { return (int)initial_x; };
+  int getInitialY() const { return (int)initial_y; };
+
   // Adds a new waypoint to reach for this agent
   void addWaypoint(Twaypoint *wp);
 
