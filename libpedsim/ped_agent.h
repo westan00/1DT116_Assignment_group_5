@@ -62,21 +62,16 @@ public:
 private:
   Tagent() {};
 
-  // The agent's position (statically stored if not linked to SoA)
-  float staticX;
-  float staticY;
-  float staticDesiredPositionX;
-  float staticDesiredPositionY;
-  float staticDestX;
-  float staticDestY;
-
-  // Pointers to the active data (either static or in Model's SoA)
+  // Pointers to the active data in Model's SoA
   float *p_x;
   float *p_y;
   float *p_desiredPositionX;
   float *p_desiredPositionY;
   float *p_destX;
   float *p_destY;
+
+  float initial_x;
+  float initial_y;
 
   // The current destination (may require several steps to reach)
   Twaypoint *destination;
