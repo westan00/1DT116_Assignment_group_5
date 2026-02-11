@@ -17,7 +17,7 @@
 #include <thread>
 #include <vector>
 
-#ifndef NOCDUA
+#ifndef NOCUDA
 #include "cuda_testkernel.h"
 #endif
 
