@@ -49,7 +49,8 @@ void Ped::Tagent::computeNextDesiredPosition() {
 }
 
 void Ped::Tagent::updateWaypoint() {
-  destination = getNextDestination() if (destination != NULL) {
+  destination = getNextDestination();
+  if (destination != NULL) {
     *pDestX = (float)destination->getx();
     *pDestY = (float)destination->gety();
   }
@@ -63,13 +64,13 @@ void Ped::Tagent::setPointers(float *x, float *y, float *dX, float *dY,
   pY = y;
   pDestX = dX;
   pDestY = dY;
-  pDesiredPosX = desX;
-  pDesiredPosY = desY;
+  pDesiredPositionX = desX;
+  pDesiredPositionY = desY;
 
   *pX = initX;
   *pY = initY;
-  *pDesiredPosX = initX;
-  *pDesiredPosY = initY;
+  *pDesiredPositionX = initX;
+  *pDesiredPositionY = initY;
 
   if (destination) {
     *pDestX = (float)destination->getx();
