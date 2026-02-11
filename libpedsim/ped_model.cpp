@@ -10,6 +10,8 @@
 #include "ped_waypoint.h"
 #include <algorithm>
 #include <cmath>
+#include <cuda.h>
+#include <cuda_runtime_api.h>
 #include <iostream>
 #include <omp.h>
 #include <pthread.h>
