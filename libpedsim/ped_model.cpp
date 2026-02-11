@@ -52,12 +52,21 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
     n_padded = num_agents;
   }
 
-  posix_memalign((void **)&agentX, 64, n_padded * sizeof(float));
-  posix_memalign((void **)&agentY, 64, n_padded * sizeof(float));
-  posix_memalign((void **)&destX, 64, n_padded * sizeof(float));
-  posix_memalign((void **)&destY, 64, n_padded * sizeof(float));
-  posix_memalign((void **)&desiredX, 64, n_padded * sizeof(float));
-  posix_memalign((void **)&desiredY, 64, n_padded * sizeof(float));
+  if (implementation == Ped::CUDA) {
+    cudaMallocManaged(&agentX, 64, n_padded * sizeof(float));
+    cudaMallocManaged(&agentY, 64, n_padded * sizeof(float));
+    cudaMallocManaged(&destX, 64, n_padded * sizeof(float));
+    cudaMallocManaged(&destY, 64, n_padded * sizeof(float));
+    cudaMallocManaged(&desiredX, 64, n_padded * sizeof(float));
+    cudaMallocManaged(&desiredY, 64, n_padded * sizeof(float));
+  } else {
+    posix_memalign((void **)&agentX, 64, n_padded * sizeof(float));
+    posix_memalign((void **)&agentY, 64, n_padded * sizeof(float));
+    posix_memalign((void **)&destX, 64, n_padded * sizeof(float));
+    posix_memalign((void **)&destY, 64, n_padded * sizeof(float));
+    posix_memalign((void **)&desiredX, 64, n_padded * sizeof(float));
+    posix_memalign((void **)&desiredY, 64, n_padded * sizeof(float));
+  }
 
   for (int i = 0; i < n_padded; ++i) {
     if (i < num_agents) {
@@ -117,6 +126,40 @@ void *barrier_worker(void *arg) {
     pthread_barrier_wait(&data->done_barrier);
   }
   return NULL;
+}
+
+__global__ void Ped::Model::cuda_tick() {
+#pragma omp parallel for
+  for (int i = 0; i < num_agents; ++i) {
+    agents[i]->updateWaypoint();
+  }
+  // Parallelized Vectorized calculation (OMP + AVX-512)
+#pragma omp parallel for
+  for (int i = 0; i < n_padded; i += 16) {
+    __m512 ax = _mm512_load_ps(&agentX[i]);
+    __m512 ay = _mm512_load_ps(&agentY[i]);
+    __m512 dx = _mm512_load_ps(&destX[i]);
+    __m512 dy = _mm512_load_ps(&destY[i]);
+
+    __m512 diffX = _mm512_sub_ps(dx, ax);
+    __m512 diffY = _mm512_sub_ps(dy, ay);
+
+    __m512 lenSq =
+        _mm512_add_ps(_mm512_mul_ps(diffX, diffX), _mm512_mul_ps(diffY, diffY));
+    __m512 len = _mm512_sqrt_ps(lenSq);
+
+    __m512 stepX = _mm512_div_ps(diffX, len);
+    __m512 stepY = _mm512_div_ps(diffY, len);
+
+    __m512 desX = _mm512_add_ps(ax, stepX);
+    __m512 desY = _mm512_add_ps(ay, stepY);
+
+    _mm512_store_ps(&desiredX[i], desX);
+    _mm512_store_ps(&desiredY[i], desY);
+
+    _mm512_store_ps(&agentX[i], desX);
+    _mm512_store_ps(&agentY[i], desY);
+  }
 }
 
 void Ped::Model::tick() {
@@ -230,6 +273,11 @@ void Ped::Model::tick() {
     }
     break;
   }
+  case Ped::CUDA: {
+    cuda_tick<<<1, 1>>>();
+    cudaDeviceSynchronize();
+    break;
+  }
   default: {
     for (Ped::Tagent *agent : agents) {
       agent->computeNextDesiredPosition();
@@ -321,12 +369,21 @@ void Ped::Model::cleanup() {
 }
 
 Ped::Model::~Model() {
-  free(agentX);
-  free(agentY);
-  free(destX);
-  free(destY);
-  free(desiredX);
-  free(desiredY);
+  if (implementation == Ped::CUDA) {
+    cudaFree(agentX);
+    cudaFree(agentY);
+    cudaFree(destX);
+    cudaFree(destY);
+    cudaFree(desiredX);
+    cudaFree(desiredY);
+  } else {
+    free(agentX);
+    free(agentY);
+    free(destX);
+    free(destY);
+    free(desiredX);
+    free(desiredY);
+  }
 
   std::for_each(agents.begin(), agents.end(),
                 [](Ped::Tagent *agent) { delete agent; });

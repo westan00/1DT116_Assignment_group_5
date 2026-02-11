@@ -43,6 +43,8 @@ public:
   // Thread work function for pthread
   void tick_thread(const int num_threads, int id);
 
+  __global__ void cuda_tick();
+
   // Adds an agent to the tree structure
   void placeAgent(const Ped::Tagent *a);
 
