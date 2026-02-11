@@ -166,12 +166,50 @@ void Ped::Model::tick() {
     break;
   }
   case Ped::VECTOR: {
-    // 1. Parallel update of destinations if reached
+    for (int i = 0; i < num_agents; ++i) {
+      agents[i]->updateWaypoint();
+    }
+    for (int i = 0; i < n_padded; i += 16) {
+      __m512 ax = _mm512_load_ps(&agentX[i]);
+      __m512 ay = _mm512_load_ps(&agentY[i]);
+      __m512 dx = _mm512_load_ps(&destX[i]);
+      __m512 dy = _mm512_load_ps(&destY[i]);
+
+      __m512 diffX = _mm512_sub_ps(dx, ax);
+      __m512 diffY = _mm512_sub_ps(dy, ay);
+
+      __m512 lenSq = _mm512_add_ps(_mm512_mul_ps(diffX, diffX),
+                                   _mm512_mul_ps(diffY, diffY));
+      __m512 len = _mm512_sqrt_ps(lenSq);
+
+      __m512 zero = _mm512_setzero_ps();
+      __mmask16 mask = _mm512_cmp_ps_mask(len, zero, _CMP_GT_OQ);
+
+      __m512 stepX = _mm512_maskz_div_ps(mask, diffX, len);
+      __m512 stepY = _mm512_maskz_div_ps(mask, diffY, len);
+
+      __m512 desX = _mm512_add_ps(ax, stepX);
+      __m512 desY = _mm512_add_ps(ay, stepY);
+
+      __m512 roundedDesX = _mm512_roundscale_ps(
+          desX, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
+      __m512 roundedDesY = _mm512_roundscale_ps(
+          desY, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
+
+      _mm512_store_ps(&desiredX[i], roundedDesX);
+      _mm512_store_ps(&desiredY[i], roundedDesY);
+
+      _mm512_store_ps(&agentX[i], roundedDesX);
+      _mm512_store_ps(&agentY[i], roundedDesY);
+    }
+    break;
+  }
+  case Ped::VECTOROMP: {
 #pragma omp parallel for
     for (int i = 0; i < num_agents; ++i) {
       agents[i]->updateWaypoint();
     }
-    // 2. Parallelized Vectorized calculation (OMP + AVX-512)
+    // Parallelized Vectorized calculation (OMP + AVX-512)
 #pragma omp parallel for
     for (int i = 0; i < n_padded; i += 16) {
       __m512 ax = _mm512_load_ps(&agentX[i]);
@@ -195,9 +233,6 @@ void Ped::Model::tick() {
       __m512 desX = _mm512_add_ps(ax, stepX);
       __m512 desY = _mm512_add_ps(ay, stepY);
 
-      // In SEQ mode, getDesiredX() returns (int)round(desX)
-      // and then setX(getDesiredX()) sets agentX to that int.
-      // To match SEQ exactly, we should round here.
       __m512 roundedDesX = _mm512_roundscale_ps(
           desX, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
       __m512 roundedDesY = _mm512_roundscale_ps(
@@ -206,7 +241,6 @@ void Ped::Model::tick() {
       _mm512_store_ps(&desiredX[i], roundedDesX);
       _mm512_store_ps(&desiredY[i], roundedDesY);
 
-      // Move the agents
       _mm512_store_ps(&agentX[i], roundedDesX);
       _mm512_store_ps(&agentY[i], roundedDesY);
     }
