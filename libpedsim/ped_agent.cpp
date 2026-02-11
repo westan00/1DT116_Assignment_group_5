@@ -28,9 +28,6 @@ void Ped::Tagent::init(int posX, int posY) {
   p_desiredPositionY = nullptr;
   p_destX = nullptr;
   p_destY = nullptr;
-
-  destination = NULL;
-  lastDestination = NULL;
 }
 
 void Ped::Tagent::computeNextDesiredPosition() {
@@ -79,8 +76,6 @@ void Ped::Tagent::setSoAPointers(float *x, float *y, float *dX, float *dY,
     *p_destY = initial_y;
   }
 }
-
-void Ped::Tagent::addWaypoint(Twaypoint *wp) { waypoints.push_back(wp); }
 
 Ped::Twaypoint *Ped::Tagent::getNextDestination() {
   Ped::Twaypoint *nextDestination = NULL;

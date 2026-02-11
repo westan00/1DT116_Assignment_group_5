@@ -243,8 +243,8 @@ void Ped::Model::tick() {
       }
 
       // Now compute movement (same as before)
-      __m512 diffX = _mm512_sub_ps(dx, ax);
-      __m512 diffY = _mm512_sub_ps(dy, ay);
+      diffX = _mm512_sub_ps(dx, ax);
+      diffY = _mm512_sub_ps(dy, ay);
       __m512 lenSq = _mm512_fmadd_ps(diffX, diffX, _mm512_mul_ps(diffY, diffY));
       __m512 len = _mm512_sqrt_ps(lenSq);
 
@@ -257,8 +257,8 @@ void Ped::Model::tick() {
       __m512 newX = _mm512_add_ps(ax, stepX);
       __m512 newY = _mm512_add_ps(ay, stepY);
 
-      __m512 roundedX = _mm512_roundscale_ps(newX, _MM_FROUND_TO_NEAREST_INT);
-      __m512 roundedY = _mm512_roundscale_ps(newY, _MM_FROUND_TO_NEAREST_INT);
+      __m512 roundedX = _mm512_roundscale_ps(newX, 0x00);
+      __m512 roundedY = _mm512_roundscale_ps(newY, 0x00);
 
       _mm512_store_ps(&agentX[i], roundedX);
       _mm512_store_ps(&agentY[i], roundedY);
@@ -268,49 +268,48 @@ void Ped::Model::tick() {
       _mm512_store_ps(&destY[i], dy);
     }
   } break;
-  }
-case Ped::VECTOROMP: {
+  case Ped::VECTOROMP: {
 #pragma omp parallel for
-  for (int i = 0; i < num_agents; ++i) {
-    agents[i]->updateWaypoint();
-  }
-  // Parallelized Vectorized calculation (OMP + AVX-512)
+    for (int i = 0; i < num_agents; ++i) {
+      agents[i]->updateWaypoint();
+    }
+    // Parallelized Vectorized calculation (OMP + AVX-512)
 #pragma omp parallel for
-  for (int i = 0; i < n_padded; i += 16) {
-    __m512 ax = _mm512_load_ps(&agentX[i]);
-    __m512 ay = _mm512_load_ps(&agentY[i]);
-    __m512 dx = _mm512_load_ps(&destX[i]);
-    __m512 dy = _mm512_load_ps(&destY[i]);
+    for (int i = 0; i < n_padded; i += 16) {
+      __m512 ax = _mm512_load_ps(&agentX[i]);
+      __m512 ay = _mm512_load_ps(&agentY[i]);
+      __m512 dx = _mm512_load_ps(&destX[i]);
+      __m512 dy = _mm512_load_ps(&destY[i]);
 
-    __m512 diffX = _mm512_sub_ps(dx, ax);
-    __m512 diffY = _mm512_sub_ps(dy, ay);
+      __m512 diffX = _mm512_sub_ps(dx, ax);
+      __m512 diffY = _mm512_sub_ps(dy, ay);
 
-    __m512 lenSq =
-        _mm512_add_ps(_mm512_mul_ps(diffX, diffX), _mm512_mul_ps(diffY, diffY));
-    __m512 len = _mm512_sqrt_ps(lenSq);
+      __m512 lenSq = _mm512_add_ps(_mm512_mul_ps(diffX, diffX),
+                                   _mm512_mul_ps(diffY, diffY));
+      __m512 len = _mm512_sqrt_ps(lenSq);
 
-    __m512 stepX = _mm512_div_ps(diffX, len);
-    __m512 stepY = _mm512_div_ps(diffY, len);
+      __m512 stepX = _mm512_div_ps(diffX, len);
+      __m512 stepY = _mm512_div_ps(diffY, len);
 
-    __m512 desX = _mm512_add_ps(ax, stepX);
-    __m512 desY = _mm512_add_ps(ay, stepY);
+      __m512 desX = _mm512_add_ps(ax, stepX);
+      __m512 desY = _mm512_add_ps(ay, stepY);
 
-    _mm512_store_ps(&desiredX[i], desX);
-    _mm512_store_ps(&desiredY[i], desY);
+      _mm512_store_ps(&desiredX[i], desX);
+      _mm512_store_ps(&desiredY[i], desY);
 
-    _mm512_store_ps(&agentX[i], desX);
-    _mm512_store_ps(&agentY[i], desY);
+      _mm512_store_ps(&agentX[i], desX);
+      _mm512_store_ps(&agentY[i], desY);
+    }
+    break;
   }
-  break;
-}
-default: {
-  for (Ped::Tagent *agent : agents) {
-    agent->computeNextDesiredPosition();
-    agent->setX(agent->getDesiredX());
-    agent->setY(agent->getDesiredY());
+  default: {
+    for (Ped::Tagent *agent : agents) {
+      agent->computeNextDesiredPosition();
+      agent->setX(agent->getDesiredX());
+      agent->setY(agent->getDesiredY());
+    }
   }
-}
-}
+  }
 }
 
 ////////////
@@ -400,6 +399,13 @@ Ped::Model::~Model() {
   free(destY);
   free(desiredX);
   free(desiredY);
+  free(waypoints.x);
+  free(waypoints.y);
+  free(waypoints.radius);
+  free(agentWaypointStart);
+  free(agentWaypointCount);
+  free(agentCurrentWpIdx);
+  free(agentWaypointGlobalIdx);
 
   std::for_each(agents.begin(), agents.end(),
                 [](Ped::Tagent *agent) { delete agent; });

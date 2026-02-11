@@ -78,7 +78,6 @@ private:
 
   int *agentWaypointStart;
   int *agentWaypointCount;
-  float *agentWaypointIdx;
   int *agentCurrentWpIdx;
   int *agentWaypointGlobalIdx;
 

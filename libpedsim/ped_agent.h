@@ -55,8 +55,17 @@ public:
   // Adds a new waypoint to reach for this agent
   void addWaypoint(Twaypoint *wp);
 
+  int getWaypointCount() const { return waypoints.size(); }
+  const deque<Twaypoint *> &getWaypoints() const { return waypoints; }
+
   // Returns the current destination
   Twaypoint *getDestination() const { return destination; }
+
+  // Returns the number of waypoints
+  int getWaypointCount() const { return waypoints.size(); }
+
+  // Returns the list of waypoints
+  const std::deque<Twaypoint *> &getWaypoints() const { return waypoints; }
 
   // Link to SoA storage in Model
   void setSoAPointers(float *x, float *y, float *dX, float *dY, float *desX,
@@ -75,6 +84,10 @@ private:
 
   float initial_x;
   float initial_y;
+
+  Twaypoint *destination;
+  Twaypoint *lastDestination;
+  deque<Twaypoint *> waypoints;
 
   int waypointListStart;
   int waypointListCount;
