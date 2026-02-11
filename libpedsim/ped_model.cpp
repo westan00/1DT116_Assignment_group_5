@@ -43,6 +43,33 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
   // Sets the chosen implemenation. Standard in the given code is SEQ
   this->implementation = implementation;
 
+  numAgents = agents.size();
+  if (implementation == Ped::VECTOR or implementation == Ped::VECTOROMP) {
+    nPadded = (numAgents + 15) / 16 * 16;
+  } else {
+    nPadded = numAgents;
+  }
+
+  posix_memalign((void **)&agentX, 64, nPadded * sizeof(float));
+  posix_memalign((void **)&agentY, 64, nPadded * sizeof(float));
+  posix_memalign((void **)&destX, 64, nPadded * sizeof(float));
+  posix_memalign((void **)&destY, 64, nPadded * sizeof(float));
+  posix_memalign((void **)&desiredX, 64, nPadded * sizeof(float));
+  posix_memalign((void **)&desiredY, 64, nPadded * sizeof(float));
+
+  for (int i = 0; i < nPadded; ++i) {
+    if (i < numAgents) {
+      agents[i]->setPointers(&agentX[i], &agentY[i], &destX[i], &destY[i],
+                             &desiredX[i], &desiredY[i]);
+    } else {
+      agentX[i] = 0;
+      agentY[i] = 0;
+      destX[i] = 0;
+      destY[i] = 0;
+      desiredX[i] = 0;
+      desiredY[i] = 0;
+    }
+  }
   // Set up heatmap (relevant for Assignment 4)
   setupHeatmapSeq();
 }
