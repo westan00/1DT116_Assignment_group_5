@@ -133,6 +133,7 @@ int main(int argc, char *argv[]) {
       // Hanlde --simdomp
       std::cout << "Option --simdomp activated\n";
       implementation_to_test = Ped::VECTOROMP;
+      break;
     case 'o':
       // Handle --omp
       std::cout << "Option --omp activated\n";
