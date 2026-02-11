@@ -131,39 +131,7 @@ void *barrier_worker(void *arg) {
   return NULL;
 }
 
-__global__ void Ped::Model::cuda_tick() {
-#pragma omp parallel for
-  for (int i = 0; i < num_agents; ++i) {
-    agents[i]->updateWaypoint();
-  }
-  // Parallelized Vectorized calculation (OMP + AVX-512)
-#pragma omp parallel for
-  for (int i = 0; i < n_padded; i += 16) {
-    __m512 ax = _mm512_load_ps(&agentX[i]);
-    __m512 ay = _mm512_load_ps(&agentY[i]);
-    __m512 dx = _mm512_load_ps(&destX[i]);
-    __m512 dy = _mm512_load_ps(&destY[i]);
 
-    __m512 diffX = _mm512_sub_ps(dx, ax);
-    __m512 diffY = _mm512_sub_ps(dy, ay);
-
-    __m512 lenSq =
-        _mm512_add_ps(_mm512_mul_ps(diffX, diffX), _mm512_mul_ps(diffY, diffY));
-    __m512 len = _mm512_sqrt_ps(lenSq);
-
-    __m512 stepX = _mm512_div_ps(diffX, len);
-    __m512 stepY = _mm512_div_ps(diffY, len);
-
-    __m512 desX = _mm512_add_ps(ax, stepX);
-    __m512 desY = _mm512_add_ps(ay, stepY);
-
-    _mm512_store_ps(&desiredX[i], desX);
-    _mm512_store_ps(&desiredY[i], desY);
-
-    _mm512_store_ps(&agentX[i], desX);
-    _mm512_store_ps(&agentY[i], desY);
-  }
-}
 
 void Ped::Model::tick() {
   // EDIT HERE FOR ASSIGNMENT 1
@@ -277,7 +245,10 @@ void Ped::Model::tick() {
     break;
   }
   case Ped::CUDA: {
-    cuda_tick<<<1, 1>>>();
+    for (int i = 0; i < num_agents; ++i) {
+      agents[i]->updateWaypoint();
+    }
+    launch_cuda_tick(agentX, agentY, destX, destY, desiredX, desiredY, n_padded);
     cudaDeviceSynchronize();
     break;
   }
