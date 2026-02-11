@@ -61,12 +61,6 @@ public:
   // Returns the current destination
   Twaypoint *getDestination() const { return destination; }
 
-  // Returns the number of waypoints
-  int getWaypointCount() const { return waypoints.size(); }
-
-  // Returns the list of waypoints
-  const std::deque<Twaypoint *> &getWaypoints() const { return waypoints; }
-
   // Link to SoA storage in Model
   void setSoAPointers(float *x, float *y, float *dX, float *dY, float *desX,
                       float *desY);

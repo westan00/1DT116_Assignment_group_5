@@ -1,4 +1,7 @@
-#include <iostream>
+#ifndef _ped_waypoint_system_h_
+#define _ped_waypoint_system_h_
+
+#include <stdlib.h>
 
 struct WaypointSystem {
   float *x;
@@ -23,3 +26,5 @@ struct WaypointSystem {
     return idx;
   }
 };
+
+#endif
