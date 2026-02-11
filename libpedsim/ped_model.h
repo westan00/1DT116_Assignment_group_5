@@ -12,6 +12,7 @@
 #define _ped_model_h_
 
 #include "ped_agent.h"
+#include "ped_waypoint_system.h"
 #include <atomic>
 #include <immintrin.h>
 #include <map>
@@ -78,8 +79,8 @@ private:
   int *agentWaypointStart;
   int *agentWaypointCount;
   float *agentWaypointIdx;
-  float *agentCurrentWpIdx;
-  float *agentWaypointGlobalIdx;
+  int *agentCurrentWpIdx;
+  int *agentWaypointGlobalIdx;
 
   // Moves an agent towards its next position
   void move(Ped::Tagent *agent);
