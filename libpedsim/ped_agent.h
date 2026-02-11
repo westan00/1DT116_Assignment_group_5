@@ -16,6 +16,7 @@
 #ifndef _ped_agent_h_
 #define _ped_agent_h_ 1
 
+#include <cmath>
 #include <deque>
 #include <vector>
 
@@ -47,8 +48,8 @@ public:
   int getX() const { return round(*pX); };
   int getY() const { return round(*pY); };
 
-  getInitialX() const { return initX; };
-  getInitialY() const { return initY; };
+  int getInitialX() const { return initX; };
+  int getInitialY() const { return initY; };
 
   // Adds a new waypoint to reach for this agent
   void addWaypoint(Twaypoint *wp);
