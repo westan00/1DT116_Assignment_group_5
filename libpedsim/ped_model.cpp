@@ -92,9 +92,16 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
       int idx = waypoints.addWaypoint(wp->getx(), wp->gety(), wp->getr());
       currentWpIdx++;
     }
-    agentWaypointGlobalIdx[i] = agentWaypointStart[i];
-    destX[i] = waypoints.x[agentWaypointGlobalIdx[i]];
-    destY[i] = waypoints.y[agentWaypointGlobalIdx[i]];
+    if (agentWaypointCount[i] > 0) {
+      agentWaypointGlobalIdx[i] = agentWaypointStart[i];
+      destX[i] = waypoints.x[agentWaypointGlobalIdx[i]];
+      destY[i] = waypoints.y[agentWaypointGlobalIdx[i]];
+    } else {
+      // Agent has no waypoints - stay at initial position
+      agentWaypointGlobalIdx[i] = 0; // Safe default
+      destX[i] = agentX[i];          // Use current position
+      destY[i] = agentY[i];
+    }
   }
 
   // Set up heatmap (relevant for Assignment 4)
