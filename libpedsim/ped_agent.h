@@ -10,70 +10,84 @@
 // represents the position it would like to visit next as it
 // will bring it closer to its destination.
 // Note: the agent will not move by itself, but the movement
-// is handled in ped_model.cpp. 
+// is handled in ped_model.cpp.
 //
 
 #ifndef _ped_agent_h_
 #define _ped_agent_h_ 1
 
-#include <vector>
 #include <deque>
+#include <vector>
 
 using namespace std;
 
 namespace Ped {
-	class Twaypoint;
+class Twaypoint;
 
-	class Tagent {
-	public:
-		Tagent(int posX, int posY);
-		Tagent(double posX, double posY);
+class Tagent {
+public:
+  Tagent(int posX, int posY);
+  Tagent(double posX, double posY);
 
-		// Returns the coordinates of the desired position
-		int getDesiredX() const { return desiredPositionX; }
-		int getDesiredY() const { return desiredPositionY; }
+  // Returns the coordinates of the desired position
+  int getDesiredX() const { return round(pDesiredPositionX); }
+  int getDesiredY() const { return round(pDesiredPositionY); }
 
-		// Sets the agent's position
-		void setX(int newX) { x = newX; }
-		void setY(int newY) { y = newY; }
+  // Sets the agent's position
+  void setX(int newX) { *pX = (float)newX; }
+  void setY(int newY) { *pY = (float)newY; }
 
-		// Update the position according to get closer
-		// to the current destination
-		void computeNextDesiredPosition();
+  // Update the position according to get closer
+  // to the current destination
+  void computeNextDesiredPosition();
 
-		// Position of agent defined by x and y
-		int getX() const { return x; };
-		int getY() const { return y; };
+  void updateWaypoint();
 
-		// Adds a new waypoint to reach for this agent
-		void addWaypoint(Twaypoint* wp);
+  // Position of agent defined by x and y
+  int getX() const { return round(*pX); };
+  int getY() const { return round(*pY); };
 
-	private:
-		Tagent() {};
+  getInitialX() const { return initX; };
+  getInitialY() const { return initY; };
 
-		// The agent's current position
-		int x;
-		int y;
+  // Adds a new waypoint to reach for this agent
+  void addWaypoint(Twaypoint *wp);
 
-		// The agent's desired next position
-		int desiredPositionX;
-		int desiredPositionY;
+  Twaypoint *getDestination() const { return destination; };
 
-		// The current destination (may require several steps to reach)
-		Twaypoint* destination;
+  void setPointers(float *x, float *y, float *dX, float *dY, float *desX,
+                   float *desY);
 
-		// The last destination
-		Twaypoint* lastDestination;
+private:
+  Tagent() {};
 
-		// The queue of all destinations that this agent still has to visit
-		deque<Twaypoint*> waypoints;
+  // The agent's current position
+  float *pX;
+  float *pY;
+  float *pDestX;
+  float *pDestY;
+  float *pDesiredPositionX;
+  float *pDesiredPositionY;
 
-		// Internal init function 
-		void init(int posX, int posY);
+  // The agent's desired next position
+  float initX;
+  float initY;
 
-		// Returns the next destination to visit
-		Twaypoint* getNextDestination();
-	};
-}
+  // The current destination (may require several steps to reach)
+  Twaypoint *destination;
+
+  // The last destination
+  Twaypoint *lastDestination;
+
+  // The queue of all destinations that this agent still has to visit
+  deque<Twaypoint *> waypoints;
+
+  // Internal init function
+  void init(int posX, int posY);
+
+  // Returns the next destination to visit
+  Twaypoint *getNextDestination();
+};
+} // namespace Ped
 
 #endif
