@@ -103,3 +103,5 @@ Ped::Twaypoint *Ped::Tagent::getNextDestination() {
 
   return nextDestination;
 }
+
+void Ped::Tagent::addWaypoint(Twaypoint *wp) { waypoints.push_back(wp); }
