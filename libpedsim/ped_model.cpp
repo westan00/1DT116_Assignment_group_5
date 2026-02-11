@@ -17,7 +17,7 @@
 #include <thread>
 #include <vector>
 
-#ifndef NOCDUA
+#ifndef NOCUDA
 #include "cuda_testkernel.h"
 #endif
 
@@ -52,13 +52,21 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
     n_padded = num_agents;
   }
 
-  posix_memalign((void **)&agentX, 64, n_padded * sizeof(float));
-  posix_memalign((void **)&agentY, 64, n_padded * sizeof(float));
-  posix_memalign((void **)&destX, 64, n_padded * sizeof(float));
-  posix_memalign((void **)&destY, 64, n_padded * sizeof(float));
-  posix_memalign((void **)&desiredX, 64, n_padded * sizeof(float));
-  posix_memalign((void **)&desiredY, 64, n_padded * sizeof(float));
-
+  if (implementation == CUDA) {
+    cudaMallocManaged(&agentX, n_padded * sizeof(float));
+    cudaMallocManaged(&agentY, n_padded * sizeof(float));
+    cudaMallocManaged(&destX, n_padded * sizeof(float));
+    cudaMallocManaged(&destY, n_padded * sizeof(float));
+    cudaMallocManaged(&desiredX, n_padded * sizeof(float));
+    cudaMallocManaged(&desiredY, n_padded * sizeof(float));
+  } else {
+    posix_memalign((void **)&agentX, 64, n_padded * sizeof(float));
+    posix_memalign((void **)&agentY, 64, n_padded * sizeof(float));
+    posix_memalign((void **)&destX, 64, n_padded * sizeof(float));
+    posix_memalign((void **)&destY, 64, n_padded * sizeof(float));
+    posix_memalign((void **)&desiredX, 64, n_padded * sizeof(float));
+    posix_memalign((void **)&desiredY, 64, n_padded * sizeof(float));
+  }
   for (int i = 0; i < n_padded; ++i) {
     if (i < num_agents) {
       agents[i]->setSoAPointers(&agentX[i], &agentY[i], &destX[i], &destY[i],
@@ -230,6 +238,9 @@ void Ped::Model::tick() {
     }
     break;
   }
+  case Ped::CUDA: {
+    __global__
+  }
   default: {
     for (Ped::Tagent *agent : agents) {
       agent->computeNextDesiredPosition();
@@ -321,12 +332,21 @@ void Ped::Model::cleanup() {
 }
 
 Ped::Model::~Model() {
-  free(agentX);
-  free(agentY);
-  free(destX);
-  free(destY);
-  free(desiredX);
-  free(desiredY);
+  if (implementation == CUDA) {
+    cudaFree(agentX);
+    cudaFree(agentY);
+    cudaFree(destX);
+    cudaFree(destY);
+    cudaFree(desiredX);
+    cudaFree(desiredY);
+  } else {
+    free(agentX);
+    free(agentY);
+    free(destX);
+    free(destY);
+    free(desiredX);
+    free(desiredY);
+  }
 
   std::for_each(agents.begin(), agents.end(),
                 [](Ped::Tagent *agent) { delete agent; });
