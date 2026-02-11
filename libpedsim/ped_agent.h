@@ -31,12 +31,12 @@ public:
   Tagent(double posX, double posY);
 
   // Returns the coordinates of the desired position
-  int getDesiredX() const { return (int)std::round(*p_desiredPositionX); }
-  int getDesiredY() const { return (int)std::round(*p_desiredPositionY); }
+  int getDesiredX() const { return *p_desiredPositionX; }
+  int getDesiredY() const { return *p_desiredPositionY; }
 
   // Sets the agent's position
-  void setX(int newX) { *p_x = (float)newX; }
-  void setY(int newY) { *p_y = (float)newY; }
+  void setX(int newX) { *p_x = newX; }
+  void setY(int newY) { *p_y = newY; }
 
   // Update the position according to get closer
   // to the current destination
@@ -46,11 +46,11 @@ public:
   void updateWaypoint();
 
   // Position of agent defined by x and y
-  int getX() const { return (int)std::round(*p_x); };
-  int getY() const { return (int)std::round(*p_y); };
+  int getX() const { return *p_x; };
+  int getY() const { return *p_y; };
 
-  int getInitialX() const { return (int)initial_x; };
-  int getInitialY() const { return (int)initial_y; };
+  int getInitialX() const { return initial_x; };
+  int getInitialY() const { return initial_y; };
 
   // Adds a new waypoint to reach for this agent
   void addWaypoint(Twaypoint *wp);

@@ -182,25 +182,17 @@ void Ped::Model::tick() {
                                    _mm512_mul_ps(diffY, diffY));
       __m512 len = _mm512_sqrt_ps(lenSq);
 
-      __m512 zero = _mm512_setzero_ps();
-      __mmask16 mask = _mm512_cmp_ps_mask(len, zero, _CMP_GT_OQ);
-
-      __m512 stepX = _mm512_maskz_div_ps(mask, diffX, len);
-      __m512 stepY = _mm512_maskz_div_ps(mask, diffY, len);
+      __m512 stepX = _mm512_div_ps(diffX, len);
+      __m512 stepY = _mm512_div_ps(diffY, len);
 
       __m512 desX = _mm512_add_ps(ax, stepX);
       __m512 desY = _mm512_add_ps(ay, stepY);
 
-      __m512 roundedDesX = _mm512_roundscale_ps(
-          desX, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
-      __m512 roundedDesY = _mm512_roundscale_ps(
-          desY, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
+      _mm512_store_ps(&desiredX[i], desX);
+      _mm512_store_ps(&desiredY[i], desY);
 
-      _mm512_store_ps(&desiredX[i], roundedDesX);
-      _mm512_store_ps(&desiredY[i], roundedDesY);
-
-      _mm512_store_ps(&agentX[i], roundedDesX);
-      _mm512_store_ps(&agentY[i], roundedDesY);
+      _mm512_store_ps(&agentX[i], desX);
+      _mm512_store_ps(&agentY[i], desY);
     }
     break;
   }
@@ -224,25 +216,17 @@ void Ped::Model::tick() {
                                    _mm512_mul_ps(diffY, diffY));
       __m512 len = _mm512_sqrt_ps(lenSq);
 
-      __m512 zero = _mm512_setzero_ps();
-      __mmask16 mask = _mm512_cmp_ps_mask(len, zero, _CMP_GT_OQ);
-
-      __m512 stepX = _mm512_maskz_div_ps(mask, diffX, len);
-      __m512 stepY = _mm512_maskz_div_ps(mask, diffY, len);
+      __m512 stepX = _mm512_div_ps(diffX, len);
+      __m512 stepY = _mm512_div_ps(diffY, len);
 
       __m512 desX = _mm512_add_ps(ax, stepX);
       __m512 desY = _mm512_add_ps(ay, stepY);
 
-      __m512 roundedDesX = _mm512_roundscale_ps(
-          desX, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
-      __m512 roundedDesY = _mm512_roundscale_ps(
-          desY, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
+      _mm512_store_ps(&desiredX[i], desX);
+      _mm512_store_ps(&desiredY[i], desY);
 
-      _mm512_store_ps(&desiredX[i], roundedDesX);
-      _mm512_store_ps(&desiredY[i], roundedDesY);
-
-      _mm512_store_ps(&agentX[i], roundedDesX);
-      _mm512_store_ps(&agentY[i], roundedDesY);
+      _mm512_store_ps(&agentX[i], desX);
+      _mm512_store_ps(&agentY[i], desY);
     }
     break;
   }

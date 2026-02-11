@@ -43,9 +43,9 @@ void Ped::Tagent::computeNextDesiredPosition() {
 
   double diffX = destination->getx() - *p_x;
   double diffY = destination->gety() - *p_y;
-  double len = std::sqrt(diffX * diffX + diffY * diffY);
-  *p_desiredPositionX = (float)std::round(*p_x + diffX / len);
-  *p_desiredPositionY = (float)std::round(*p_y + diffY / len);
+  double len = sqrt(diffX * diffX + diffY * diffY);
+  *p_desiredPositionX = (float)round(*p_x + diffX / len);
+  *p_desiredPositionY = (float)round(*p_y + diffY / len);
 }
 
 void Ped::Tagent::updateWaypoint() {
@@ -87,6 +87,7 @@ Ped::Twaypoint *Ped::Tagent::getNextDestination() {
   bool agentReachedDestination = false;
 
   if (destination != NULL) {
+    // compute if agent reached its current destination
     double diffX = destination->getx() - *p_x;
     double diffY = destination->gety() - *p_y;
     double length = sqrt(diffX * diffX + diffY * diffY);
@@ -94,10 +95,14 @@ Ped::Twaypoint *Ped::Tagent::getNextDestination() {
   }
 
   if ((agentReachedDestination || destination == NULL) && !waypoints.empty()) {
+    // Case 1: agent has reached destination (or has no current destination);
+    // get next destination if available
     waypoints.push_back(destination);
     nextDestination = waypoints.front();
     waypoints.pop_front();
   } else {
+    // Case 2: agent has not yet reached destination, continue to move towards
+    // current destination
     nextDestination = destination;
   }
 
