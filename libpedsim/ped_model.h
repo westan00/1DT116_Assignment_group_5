@@ -63,9 +63,6 @@ private:
   // The agents in this scenario
   std::vector<Tagent *> agents;
 
-  // The waypoints in this scenario
-  std::vector<Twaypoint *> destinations;
-
   // Arrays for SoA (Struct of Arrays) to support SIMD vectorization
   float *agentX;
   float *agentY;
@@ -75,6 +72,14 @@ private:
   float *desiredY;
   int num_agents;
   int n_padded;
+
+  WaypointSystem waypoints;
+
+  int *agentWaypointStart;
+  int *agentWaypointCount;
+  float *agentWaypointIdx;
+  float *agentCurrentWpIdx;
+  float *agentWaypointGlobalIdx;
 
   // Moves an agent towards its next position
   void move(Ped::Tagent *agent);

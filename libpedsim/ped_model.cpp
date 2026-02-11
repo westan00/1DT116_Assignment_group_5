@@ -37,10 +37,6 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
   agents = std::vector<Ped::Tagent *>(agentsInScenario.begin(),
                                       agentsInScenario.end());
 
-  // Set up destinations
-  destinations = std::vector<Ped::Twaypoint *>(destinationsInScenario.begin(),
-                                               destinationsInScenario.end());
-
   // Sets the chosen implemenation. Standard in the given code is SEQ
   this->implementation = implementation;
 
@@ -72,6 +68,33 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
       desiredX[i] = 0;
       desiredY[i] = 0;
     }
+  }
+
+  int totalWaypoints = 0;
+  for (auto agent : agents) {
+    totalWaypoints += agent->getWaypointCount();
+  }
+
+  waypoints.allocate(totalWaypoints);
+
+  posix_memalign((void **)&agentWaypointStart, 64, n_padded * sizeof(int));
+  posix_memalign((void **)&agentWaypointCount, 64, n_padded * sizeof(int));
+  posix_memalign((void **)&agentCurrentWpIdx, 64, n_padded * sizeof(int));
+  posix_memalign((void **)&agentWaypointGlobalIdx, 64, n_padded * sizeof(int));
+
+  int currentWpIdx = 0;
+  for (int i = 0; i < num_agents; ++i) {
+    agentWaypointStart[i] = currentWpIdx;
+    agentWaypointCount[i] = agents[i]->getWaypointCount();
+    agentCurrentWpIdx[i] = 0;
+
+    for (auto wp : agents[i]->getWaypoints()) {
+      int idx = waypoints.addWaypoint(wp->getx(), wp->gety(), wp->getr());
+      currentWpIdx++;
+    }
+    agentWaypointGlobalIdx[i] = agentWaypointStart[i];
+    destX[i] = waypoints.x[agentWaypointGlobalIdx[i]];
+    destY[i] = waypoints.y[agentWaypointGlobalIdx[i]];
   }
 
   // Set up heatmap (relevant for Assignment 4)
@@ -166,78 +189,128 @@ void Ped::Model::tick() {
     break;
   }
   case Ped::VECTOR: {
-    for (int i = 0; i < num_agents; ++i) {
-      agents[i]->updateWaypoint();
-    }
     for (int i = 0; i < n_padded; i += 16) {
+      // Load agent positions
       __m512 ax = _mm512_load_ps(&agentX[i]);
       __m512 ay = _mm512_load_ps(&agentY[i]);
-      __m512 dx = _mm512_load_ps(&destX[i]);
-      __m512 dy = _mm512_load_ps(&destY[i]);
 
+      // Load current destination indices
+      __m512i wpGlobalIdx = _mm512_load_epi32(&agentWaypointGlobalIdx[i]);
+
+      // Gather current destination coords using indices
+      __m512 dx = _mm512_i32gather_ps(wpGlobalIdx, waypoints.x, 4);
+      __m512 dy = _mm512_i32gather_ps(wpGlobalIdx, waypoints.y, 4);
+      __m512 radii = _mm512_i32gather_ps(wpGlobalIdx, waypoints.radius, 4);
+
+      // Check if reached destination (distance < radius)
       __m512 diffX = _mm512_sub_ps(dx, ax);
       __m512 diffY = _mm512_sub_ps(dy, ay);
+      __m512 distSq =
+          _mm512_fmadd_ps(diffX, diffX, _mm512_mul_ps(diffY, diffY));
+      __m512 radiusSq = _mm512_mul_ps(radii, radii);
+      __mmask16 reached = _mm512_cmp_ps_mask(distSq, radiusSq, _CMP_LT_OQ);
 
-      __m512 lenSq = _mm512_add_ps(_mm512_mul_ps(diffX, diffX),
-                                   _mm512_mul_ps(diffY, diffY));
-      __m512 len = _mm512_sqrt_ps(lenSq);
+      // For agents that reached, advance to next waypoint
+      if (reached) { // If ANY agent reached
+        __m512i currentWpIdx = _mm512_load_epi32(&agentCurrentWpIdx[i]);
+        __m512i wpCount = _mm512_load_epi32(&agentWaypointCount[i]);
+        __m512i wpStart = _mm512_load_epi32(&agentWaypointStart[i]);
 
-      __m512 stepX = _mm512_div_ps(diffX, len);
-      __m512 stepY = _mm512_div_ps(diffY, len);
+        // Increment current waypoint index (with wraparound)
+        __m512i nextWpIdx = _mm512_mask_add_epi32(
+            currentWpIdx, reached, currentWpIdx, _mm512_set1_epi32(1));
 
-      __m512 desX = _mm512_add_ps(ax, stepX);
-      __m512 desY = _mm512_add_ps(ay, stepY);
+        // Wraparound: if nextWpIdx >= wpCount, set to 0
+        __mmask16 needWrap =
+            _mm512_cmp_epi32_mask(nextWpIdx, wpCount, _MM_CMPINT_GE);
+        nextWpIdx = _mm512_mask_blend_epi32(needWrap, nextWpIdx,
+                                            _mm512_setzero_epi32());
 
-      _mm512_store_ps(&desiredX[i], desX);
-      _mm512_store_ps(&desiredY[i], desY);
+        // Store updated waypoint index
+        _mm512_store_epi32(&agentCurrentWpIdx[i], nextWpIdx);
 
-      _mm512_store_ps(&agentX[i], desX);
-      _mm512_store_ps(&agentY[i], desY);
-    }
-    break;
-  }
-  case Ped::VECTOROMP: {
-#pragma omp parallel for
-    for (int i = 0; i < num_agents; ++i) {
-      agents[i]->updateWaypoint();
-    }
-    // Parallelized Vectorized calculation (OMP + AVX-512)
-#pragma omp parallel for
-    for (int i = 0; i < n_padded; i += 16) {
-      __m512 ax = _mm512_load_ps(&agentX[i]);
-      __m512 ay = _mm512_load_ps(&agentY[i]);
-      __m512 dx = _mm512_load_ps(&destX[i]);
-      __m512 dy = _mm512_load_ps(&destY[i]);
+        // Calculate new global waypoint index
+        __m512i newGlobalIdx = _mm512_add_epi32(wpStart, nextWpIdx);
+        _mm512_store_epi32(&agentWaypointGlobalIdx[i], newGlobalIdx);
 
+        // Gather new destination coords
+        __m512 newDx = _mm512_i32gather_ps(newGlobalIdx, waypoints.x, 4);
+        __m512 newDy = _mm512_i32gather_ps(newGlobalIdx, waypoints.y, 4);
+
+        // Update destX/destY only for agents that reached
+        dx = _mm512_mask_blend_ps(reached, dx, newDx);
+        dy = _mm512_mask_blend_ps(reached, dy, newDy);
+      }
+
+      // Now compute movement (same as before)
       __m512 diffX = _mm512_sub_ps(dx, ax);
       __m512 diffY = _mm512_sub_ps(dy, ay);
-
-      __m512 lenSq = _mm512_add_ps(_mm512_mul_ps(diffX, diffX),
-                                   _mm512_mul_ps(diffY, diffY));
+      __m512 lenSq = _mm512_fmadd_ps(diffX, diffX, _mm512_mul_ps(diffY, diffY));
       __m512 len = _mm512_sqrt_ps(lenSq);
 
-      __m512 stepX = _mm512_div_ps(diffX, len);
-      __m512 stepY = _mm512_div_ps(diffY, len);
+      __m512 zero = _mm512_setzero_ps();
+      __mmask16 mask = _mm512_cmp_ps_mask(len, zero, _CMP_GT_OQ);
 
-      __m512 desX = _mm512_add_ps(ax, stepX);
-      __m512 desY = _mm512_add_ps(ay, stepY);
+      __m512 stepX = _mm512_maskz_div_ps(mask, diffX, len);
+      __m512 stepY = _mm512_maskz_div_ps(mask, diffY, len);
 
-      _mm512_store_ps(&desiredX[i], desX);
-      _mm512_store_ps(&desiredY[i], desY);
+      __m512 newX = _mm512_add_ps(ax, stepX);
+      __m512 newY = _mm512_add_ps(ay, stepY);
 
-      _mm512_store_ps(&agentX[i], desX);
-      _mm512_store_ps(&agentY[i], desY);
+      __m512 roundedX = _mm512_roundscale_ps(newX, _MM_FROUND_TO_NEAREST_INT);
+      __m512 roundedY = _mm512_roundscale_ps(newY, _MM_FROUND_TO_NEAREST_INT);
+
+      _mm512_store_ps(&agentX[i], roundedX);
+      _mm512_store_ps(&agentY[i], roundedY);
+      _mm512_store_ps(&desiredX[i], roundedX);
+      _mm512_store_ps(&desiredY[i], roundedY);
+      _mm512_store_ps(&destX[i], dx); // Store updated destinations
+      _mm512_store_ps(&destY[i], dy);
     }
-    break;
+  } break;
   }
-  default: {
-    for (Ped::Tagent *agent : agents) {
-      agent->computeNextDesiredPosition();
-      agent->setX(agent->getDesiredX());
-      agent->setY(agent->getDesiredY());
-    }
+case Ped::VECTOROMP: {
+#pragma omp parallel for
+  for (int i = 0; i < num_agents; ++i) {
+    agents[i]->updateWaypoint();
   }
+  // Parallelized Vectorized calculation (OMP + AVX-512)
+#pragma omp parallel for
+  for (int i = 0; i < n_padded; i += 16) {
+    __m512 ax = _mm512_load_ps(&agentX[i]);
+    __m512 ay = _mm512_load_ps(&agentY[i]);
+    __m512 dx = _mm512_load_ps(&destX[i]);
+    __m512 dy = _mm512_load_ps(&destY[i]);
+
+    __m512 diffX = _mm512_sub_ps(dx, ax);
+    __m512 diffY = _mm512_sub_ps(dy, ay);
+
+    __m512 lenSq =
+        _mm512_add_ps(_mm512_mul_ps(diffX, diffX), _mm512_mul_ps(diffY, diffY));
+    __m512 len = _mm512_sqrt_ps(lenSq);
+
+    __m512 stepX = _mm512_div_ps(diffX, len);
+    __m512 stepY = _mm512_div_ps(diffY, len);
+
+    __m512 desX = _mm512_add_ps(ax, stepX);
+    __m512 desY = _mm512_add_ps(ay, stepY);
+
+    _mm512_store_ps(&desiredX[i], desX);
+    _mm512_store_ps(&desiredY[i], desY);
+
+    _mm512_store_ps(&agentX[i], desX);
+    _mm512_store_ps(&agentY[i], desY);
   }
+  break;
+}
+default: {
+  for (Ped::Tagent *agent : agents) {
+    agent->computeNextDesiredPosition();
+    agent->setX(agent->getDesiredX());
+    agent->setY(agent->getDesiredY());
+  }
+}
+}
 }
 
 ////////////

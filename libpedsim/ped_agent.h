@@ -76,14 +76,11 @@ private:
   float initial_x;
   float initial_y;
 
-  // The current destination (may require several steps to reach)
-  Twaypoint *destination;
+  int waypointListStart;
+  int waypointListCount;
+  int currentWaypointIdx;
 
-  // The last destination
-  Twaypoint *lastDestination;
-
-  // The queue of all destinations that this agent still has to visit
-  deque<Twaypoint *> waypoints;
+  void addWaypoint(int wpIdx);
 
   // Internal init function
   void init(int posX, int posY);
