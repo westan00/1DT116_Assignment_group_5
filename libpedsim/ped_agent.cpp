@@ -7,6 +7,7 @@
 //
 #include "ped_agent.h"
 #include "ped_waypoint.h"
+#include <cstddef>
 #include <math.h>
 
 #include <stdlib.h>
@@ -23,10 +24,13 @@ void Ped::Tagent::init(int posX, int posY) {
 
   pX = nullptr;
   pY = nullptr;
-  destX = nullptr;
-  destY = nullptr;
-  desiredDestX = nullptr;
-  desiredDestY = nullptr;
+  pDestX = nullptr;
+  pDestY = nullptr;
+  pDesiredPositionX = nullptr;
+  pDesiredPositionY = nullptr;
+
+  destination = NULL;
+  lastDestination = NULL;
 }
 
 void Ped::Tagent::computeNextDesiredPosition() {
@@ -37,14 +41,44 @@ void Ped::Tagent::computeNextDesiredPosition() {
     return;
   }
 
-  double diffX = destination->getx() - x;
-  double diffY = destination->gety() - y;
+  double diffX = destination->getx() - *pX;
+  double diffY = destination->gety() - *pY;
   double len = sqrt(diffX * diffX + diffY * diffY);
-  desiredPositionX = (int)round(x + diffX / len);
-  desiredPositionY = (int)round(y + diffY / len);
+  *pDesiredPositionX = (int)round(*pX + diffX / len);
+  *pDesiredPositionY = (int)round(*pY + diffY / len);
+}
+
+void Ped::Tagent::updateWaypoint() {
+  destination = getNextDestination() if (destination != NULL) {
+    *pDestX = (float)destination->getx();
+    *pDestY = (float)destination->gety();
+  }
 }
 
 void Ped::Tagent::addWaypoint(Twaypoint *wp) { waypoints.push_back(wp); }
+
+void Ped::Tagent::setPointers(float *x, float *y, float *dX, float *dY,
+                              float *desX, float *desY) {
+  pX = x;
+  pY = y;
+  pDestX = dX;
+  pDestY = dY;
+  pDesiredPosX = desX;
+  pDesiredPosY = desY;
+
+  *pX = initX;
+  *pY = initY;
+  *pDesiredPosX = initX;
+  *pDesiredPosY = initY;
+
+  if (destination) {
+    *pDestX = (float)destination->getx();
+    *pDestY = (float)destination->gety();
+  } else {
+    *pDestX = initX;
+    *pDestY = initY;
+  }
+}
 
 Ped::Twaypoint *Ped::Tagent::getNextDestination() {
   Ped::Twaypoint *nextDestination = NULL;
@@ -52,8 +86,8 @@ Ped::Twaypoint *Ped::Tagent::getNextDestination() {
 
   if (destination != NULL) {
     // compute if agent reached its current destination
-    double diffX = destination->getx() - x;
-    double diffY = destination->gety() - y;
+    double diffX = destination->getx() - *pX;
+    double diffY = destination->gety() - *pY;
     double length = sqrt(diffX * diffX + diffY * diffY);
     agentReachedDestination = length < destination->getr();
   }
