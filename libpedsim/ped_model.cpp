@@ -409,6 +409,4 @@ Ped::Model::~Model() {
 
   std::for_each(agents.begin(), agents.end(),
                 [](Ped::Tagent *agent) { delete agent; });
-  std::for_each(destinations.begin(), destinations.end(),
-                [](Ped::Twaypoint *destination) { delete destination; });
 }
