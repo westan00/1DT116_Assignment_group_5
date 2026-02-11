@@ -83,7 +83,7 @@ int main(int argc, char *argv[]) {
         {"omp", no_argument, NULL, 'o'},
         {"pthread", no_argument, NULL, 'p'},
         {"seq", no_argument, NULL, 'q'},
-        {"simdomp", no_argument, NULL, 'so'},
+        {"simdomp", no_argument, NULL, 'v'},
         {0, 0, 0, 0} // End of options
     };
 
@@ -129,7 +129,8 @@ int main(int argc, char *argv[]) {
       std::cout << "Option --simd activated\n";
       implementation_to_test = Ped::VECTOR;
       break;
-    case 'so':
+    case 'v':
+      // Hanlde --simdomp
       std::cout << "Option --simdomp activated\n";
       implementation_to_test = Ped::VECTOROMP;
     case 'o':
