@@ -30,8 +30,8 @@ public:
   Tagent(double posX, double posY);
 
   // Returns the coordinates of the desired position
-  int getDesiredX() const { return round(pDesiredPositionX); }
-  int getDesiredY() const { return round(pDesiredPositionY); }
+  int getDesiredX() const { return round(*pDesiredPositionX); }
+  int getDesiredY() const { return round(*pDesiredPositionY); }
 
   // Sets the agent's position
   void setX(int newX) { *pX = (float)newX; }

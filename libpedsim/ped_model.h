@@ -23,7 +23,7 @@ class Tagent;
 
 // The implementation modes for Assignment 1 + 2:
 // chooses which implementation to use for tick()
-enum IMPLEMENTATION { CUDA, VECTOR, OMP, PTHREAD, SEQ };
+enum IMPLEMENTATION { CUDA, VECTOR, OMP, PTHREAD, SEQ, VECTOROMP };
 
 class Model {
 public:
@@ -64,6 +64,16 @@ private:
 
   // The waypoints in this scenario
   std::vector<Twaypoint *> destinations;
+
+  float *agentX;
+  float *agentY;
+  float *destX;
+  float *destY;
+  float *desiredX;
+  float *desiredY;
+
+  int numAgents;
+  int nPadded;
 
   // Moves an agent towards its next position
   void move(Ped::Tagent *agent);
