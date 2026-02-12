@@ -80,7 +80,7 @@ void Ped::Tagent::setSoAPointers(float *x, float *y, float *dX, float *dY,
   }
 }
 
-const std::deque<Twaypoint *> &Ped::Tagent::getWaypoints() const {
+const std::deque<Ped::Twaypoint *> &Ped::Tagent::getWaypoints() const {
   return waypoints;
 }
 
