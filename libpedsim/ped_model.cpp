@@ -260,18 +260,10 @@ void Ped::Model::tick() {
     break;
   }
   case Ped::CUDA: {
-    cudaMemPrefetchAsync(agentX, num_agents * sizeof(float), cudaCpuDeviceId);
-    cudaMemPrefetchAsync(agentY, num_agents * sizeof(float), cudaCpuDeviceId);
-
 #pragma omp parallel for
     for (int i = 0; i < num_agents; ++i) {
       agents[i]->updateWaypoint();
     }
-
-    cudaMemPrefetchAsync(agentX, num_agents * sizeof(float), 0);
-    cudaMemPrefetchAsync(agentY, num_agents * sizeof(float), 0);
-    cudaMemPrefetchAsync(destX, num_agents * sizeof(float), 0);
-    cudaMemPrefetchAsync(destY, num_agents * sizeof(float), 0);
 
     launch_cuda_tick(agentX, agentY, destX, destY, desiredX, desiredY,
                      num_agents);
