@@ -198,7 +198,7 @@ void Ped::Model::tick() {
       __m512 len = _mm512_sqrt_ps(lenSq);
 
       __m512 zero = _mm512_setzero_ps();
-      __m512 mask = _mm512_cmp_ps_mask(len, zero, _CMP_GT_OQ);
+      __mmask16 mask = _mm512_cmp_ps_mask(len, zero, _CMP_GT_OQ);
 
       __m512 stepX = _mm512_maskz_div_ps(mask, diffX, len);
       __m512 stepY = _mm512_maskz_div_ps(mask, diffY, len);
@@ -235,7 +235,7 @@ void Ped::Model::tick() {
       __m512 len = _mm512_sqrt_ps(lenSq);
 
       __m512 zero = _mm512_setzero_ps();
-      __m512 mask = _mm512_cmp_ps_mask(len, zero, _CMP_GT_OQ);
+      __mmask16 mask = _mm512_cmp_ps_mask(len, zero, _CMP_GT_OQ);
 
       __m512 stepX = _mm512_maskz_div_ps(mask, diffX, len);
       __m512 stepY = _mm512_maskz_div_ps(mask, diffY, len);
