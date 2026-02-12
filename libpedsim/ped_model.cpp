@@ -76,18 +76,6 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
 
   for (int i = 0; i < n_padded; ++i) {
     if (i < num_agents) {
-      agentX[i] = agents[i]->getX();
-      agentY[i] = agents[i]->getY();
-      Ped::Twaypoint *wp = agents[i]->getDestination();
-      if (wp) {
-        destX[i] = wp->getx();
-        destY[i] = wp->gety();
-      } else {
-        destX[i] = agentX[i];
-        destY[i] = agentY[i];
-      }
-      desiredX[i] = agentX[i];
-      desiredY[i] = agentY[i];
       agents[i]->setSoAPointers(&agentX[i], &agentY[i], &destX[i], &destY[i],
                                 &desiredX[i], &desiredY[i]);
     } else {
