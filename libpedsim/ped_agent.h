@@ -55,6 +55,8 @@ public:
   // Adds a new waypoint to reach for this agent
   void addWaypoint(Twaypoint *wp);
 
+  const std::deque<Twaypoint *> &getWaypoints() const;
+
   // Returns the current destination
   Twaypoint *getDestination() const { return destination; }
 

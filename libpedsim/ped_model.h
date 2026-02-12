@@ -43,8 +43,6 @@ public:
   // Thread work function for pthread
   void tick_thread(const int num_threads, int id);
 
-
-
   // Adds an agent to the tree structure
   void placeAgent(const Ped::Tagent *a);
 
@@ -77,6 +75,10 @@ private:
   float *desiredY;
   int num_agents;
   int n_padded;
+
+  float *wpX, *wpY, *wpR;
+  int *wpSequences, *wpSequencesLen, *currentWpIdx;
+  int maxWpsPerAgent;
 
   // Moves an agent towards its next position
   void move(Ped::Tagent *agent);

@@ -19,9 +19,11 @@
 #include <thread>
 #include <vector>
 
-extern "C" void launch_cuda_tick(float *agentX, float *agentY, float *destX,
-                                 float *destY, float *desiredX, float *desiredY,
-                                 int n);
+extern "C" void launch_cuda_tick(float *agentX, float *agentY, float *desiredX,
+                                 float *desiredY, int *currentWpIdx,
+                                 int *wpSequences, int *wpSequencesLen,
+                                 float *wpX, float *wpY, float *wpR,
+                                 int maxWpsPerAgent, int n);
 
 #ifndef NOCUDA
 #include "cuda_testkernel.h"
@@ -59,6 +61,50 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
   }
 
   if (implementation == Ped::CUDA) {
+    std::map<Twaypoint *, int> wpToId;
+    int num_destinations = destinationsInScenario.size();
+
+    cudaMallocManaged(&wpX, num_destinations * sizeof(float));
+    cudaMallocManaged(&wpY, num_destinations * sizeof(float));
+    cudaMallocManaged(&wpR, num_destinations * sizeof(float));
+
+    for (int i = 0; i < num_destinations; ++i) {
+      Twaypoint *wp = destinationsInScenario[i];
+      wpToId[wp] = i;
+      wpX[i] = wp->getx();
+      wpY[i] = wp->gety();
+      wpR[i] = wp->getr();
+    }
+
+    maxWpsPerAgent = 0;
+    for (auto agent : agentsInScenario) {
+      int count =
+          agent->getWaypoints().size() + (agent->getDestination() ? 1 : 0);
+      maxWpsPerAgent = std::max(maxWpsPerAgent, count);
+    }
+
+    cudaMallocManaged(&wpSequences, num_agents * maxWpsPerAgent * sizeof(int));
+    cudaMallocManaged(&wpSequencesLen, num_agents * sizeof(int));
+    cudaMallocManaged(&currentWpIdx, num_agents * sizeof(int));
+
+    for (int i = 0; i < num_agents; ++i) {
+      Tagent *agent = agentsInScenario[i];
+      std::deque<Twaypoint *> q = agent->getWaypoints();
+
+      int idx = 0;
+      if (agent->getDestination()) {
+        wpSequences[i * maxWpsPerAgent + idx++] =
+            wpToId[agent->getDestination()];
+      }
+
+      for (auto wp : q) {
+        wpSequences[i * maxWpsPerAgent + idx++] = wpToId[wp];
+      }
+
+      wpSequencesLen[i] = idx;
+      currentWpIdx[i] = 0;
+    }
+
     cudaMallocManaged(&agentX, n_padded * sizeof(float));
     cudaMallocManaged(&agentY, n_padded * sizeof(float));
     cudaMallocManaged(&destX, n_padded * sizeof(float));
@@ -78,6 +124,7 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
     if (i < num_agents) {
       agents[i]->setSoAPointers(&agentX[i], &agentY[i], &destX[i], &destY[i],
                                 &desiredX[i], &desiredY[i]);
+
     } else {
       // Padding
       agentX[i] = 0;
@@ -260,12 +307,8 @@ void Ped::Model::tick() {
     break;
   }
   case Ped::CUDA: {
-#pragma omp parallel for
-    for (int i = 0; i < num_agents; ++i) {
-      agents[i]->updateWaypoint();
-    }
-
-    launch_cuda_tick(agentX, agentY, destX, destY, desiredX, desiredY,
+    launch_cuda_tick(agentX, agentY, desiredX, desiredY, currentWpIdx,
+                     wpSequences, wpSequencesLen, wpX, wpY, wpR, maxWpsPerAgent,
                      num_agents);
 
     cudaDeviceSynchronize();
@@ -369,6 +412,12 @@ Ped::Model::~Model() {
     cudaFree(destY);
     cudaFree(desiredX);
     cudaFree(desiredY);
+    cudaFree(wpX);
+    cudaFree(wpY);
+    cudaFree(wpR);
+    cudaFree(wpSequences);
+    cudaFree(wpSequencesLen);
+    cudaFree(currentWpIdx);
   } else {
     free(agentX);
     free(agentY);
