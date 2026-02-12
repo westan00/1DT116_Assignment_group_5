@@ -203,14 +203,18 @@ void Ped::Model::tick() {
       __m512 stepX = _mm512_maskz_div_ps(mask, diffX, len);
       __m512 stepY = _mm512_maskz_div_ps(mask, diffY, len);
 
-      __m512 desX = _mm512_roundscale_ps(_mm512_add_ps(ax, stepX), 0x08);
-      __m512 desY = _mm512_roundscale_ps(_mm512_add_ps(ay, stepY), 0x08);
+      __m512 desX =
+          _mm512_roundscale_ps(_mm512_add_ps(ax, stepX),
+                               _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
+      __m512 desY =
+          _mm512_roundscale_ps(_mm512_add_ps(ax, stepX),
+                               _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
 
-      _mm512_mask_store_ps(&desiredX[i], mask, desX);
-      _mm512_mask_store_ps(&desiredY[i], mask, desY);
+      _mm512_store_ps(&desiredX[i], desX);
+      _mm512_store_ps(&desiredY[i], desY);
 
-      _mm512_mask_store_ps(&agentX[i], mask, desX);
-      _mm512_mask_store_ps(&agentY[i], mask, desY);
+      _mm512_store_ps(&agentX[i], desX);
+      _mm512_store_ps(&agentY[i], desY);
     }
     break;
   }
@@ -240,14 +244,18 @@ void Ped::Model::tick() {
       __m512 stepX = _mm512_maskz_div_ps(mask, diffX, len);
       __m512 stepY = _mm512_maskz_div_ps(mask, diffY, len);
 
-      __m512 desX = _mm512_roundscale_ps(_mm512_add_ps(ax, stepX), 0x08);
-      __m512 desY = _mm512_roundscale_ps(_mm512_add_ps(ay, stepY), 0x08);
+      __m512 desX =
+          _mm512_roundscale_ps(_mm512_add_ps(ax, stepX),
+                               _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
+      __m512 desY =
+          _mm512_roundscale_ps(_mm512_add_ps(ax, stepX),
+                               _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
 
-      _mm512_mask_store_ps(&desiredX[i], mask, desX);
-      _mm512_mask_store_ps(&desiredY[i], mask, desY);
+      _mm512_store_ps(&desiredX[i], desX);
+      _mm512_store_ps(&desiredY[i], desY);
 
-      _mm512_mask_store_ps(&agentX[i], mask, desX);
-      _mm512_mask_store_ps(&agentY[i], mask, desY);
+      _mm512_store_ps(&agentX[i], desX);
+      _mm512_store_ps(&agentY[i], desY);
     }
     break;
   }
