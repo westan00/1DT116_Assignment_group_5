@@ -32,7 +32,7 @@ __global__ void cuda_tick_kernel(float *agentX, float *agentY, float *destX,
 extern "C" void launch_cuda_tick(float *agentX, float *agentY, float *destX,
                                  float *destY, float *desiredX, float *desiredY,
                                  int n) {
-  int threadsPerBlock = 256;
+  int threadsPerBlock = 512;
   int blocksPerGrid = (n + threadsPerBlock - 1) / threadsPerBlock;
 
   if (n > 0) {

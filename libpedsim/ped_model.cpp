@@ -264,7 +264,7 @@ void Ped::Model::tick() {
       agents[i]->updateWaypoint();
     }
     launch_cuda_tick(agentX, agentY, destX, destY, desiredX, desiredY,
-                     n_padded);
+                     num_agents);
     break;
   }
   default: {
