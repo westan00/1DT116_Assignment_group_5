@@ -6,25 +6,31 @@ __global__ void cuda_tick_kernel(float *agentX, float *agentY, float *destX,
                                  int n) {
   int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i < n) {
-    float diffX = destX[i] - agentX[i];
-    float diffY = destY[i] - agentY[i];
-    float len = sqrtf(diffX * diffX + diffY * diffY);
+    float ax = agentX[i];
+    float ay = agentY[i];
+    float dx = destX[i];
+    float dy = destY[i];
 
-    if (len > 0.001f) {
-      float stepX = diffX / len;
-      float stepY = diffY / len;
+    float diffX = dx - ax;
+    float diffY = dy - ay;
+    float lenSq = diffX * diffX + diffY * diffY;
 
-      float desX = agentX[i] + stepX;
-      float desY = agentY[i] + stepY;
+    if (lenSq > 0.000001f) {
+      float invLen = rsqrtf(lenSq);
+      float stepX = diffX * len;
+      float stepY = diffY * len;
 
-      desiredX[i] = roundf(desX);
-      desiredY[i] = roundf(desY);
+      float desX = roundf(ax + stepX);
+      float desY = roundf(ay + stepY);
 
-      agentX[i] = desiredX[i];
-      agentY[i] = desiredY[i];
+      desiredX[i] = desX;
+      desiredY[i] = desY;
+
+      agentX[i] = desX;
+      agentY[i] = desY;
     } else {
-      desiredX[i] = agentX[i];
-      desiredY[i] = agentY[i];
+      desiredX[i] = ax;
+      desiredY[i] = ay;
     }
   }
 }
