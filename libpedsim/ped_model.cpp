@@ -19,10 +19,6 @@
 #include <thread>
 #include <vector>
 
-extern "C" void launch_cuda_tick(float *agentX, float *agentY, float *destX,
-                                 float *destY, float *desiredX, float *desiredY,
-                                 int n);
-
 #ifndef NOCUDA
 #include "cuda_testkernel.h"
 #endif
@@ -58,21 +54,11 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
     n_padded = num_agents;
   }
 
-  if (implementation == Ped::CUDA) {
-    cudaMallocManaged(&agentX, n_padded * sizeof(float));
-    cudaMallocManaged(&agentY, n_padded * sizeof(float));
-    cudaMallocManaged(&destX, n_padded * sizeof(float));
-    cudaMallocManaged(&destY, n_padded * sizeof(float));
-    cudaMallocManaged(&desiredX, n_padded * sizeof(float));
-    cudaMallocManaged(&desiredY, n_padded * sizeof(float));
-  } else {
-    posix_memalign((void **)&agentX, 64, n_padded * sizeof(float));
-    posix_memalign((void **)&agentY, 64, n_padded * sizeof(float));
-    posix_memalign((void **)&destX, 64, n_padded * sizeof(float));
-    posix_memalign((void **)&destY, 64, n_padded * sizeof(float));
-    posix_memalign((void **)&desiredX, 64, n_padded * sizeof(float));
-    posix_memalign((void **)&desiredY, 64, n_padded * sizeof(float));
-  }
+  posix_memalign((void **)&agentX, 64, n_padded * sizeof(float));
+  posix_memalign((void **)&agentY, 64, n_padded * sizeof(float));
+  posix_memalign((void **)&destX, 64, n_padded * sizeof(float));
+  posix_memalign((void **)&destY, 64, n_padded * sizeof(float));
+  posix_memalign((void **)&desiredX, 64, n_padded * sizeof(float));
 
   for (int i = 0; i < n_padded; ++i) {
     if (i < num_agents) {
