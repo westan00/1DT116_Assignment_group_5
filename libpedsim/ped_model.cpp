@@ -10,15 +10,18 @@
 #include "ped_waypoint.h"
 #include <algorithm>
 #include <cmath>
+#include <cuda_runtime.h>
+#include <immintrin.h>
 #include <iostream>
 #include <omp.h>
 #include <pthread.h>
 #include <stack>
 #include <thread>
 #include <vector>
-#include <cuda_runtime.h>
 
-extern "C" void launch_cuda_tick(float* agentX, float* agentY, float* destX, float* destY, float* desiredX, float* desiredY, int n);
+extern "C" void launch_cuda_tick(float *agentX, float *agentY, float *destX,
+                                 float *destY, float *desiredX, float *desiredY,
+                                 int n);
 
 #ifndef NOCUDA
 #include "cuda_testkernel.h"
@@ -131,8 +134,6 @@ void *barrier_worker(void *arg) {
   return NULL;
 }
 
-
-
 void Ped::Model::tick() {
   // EDIT HERE FOR ASSIGNMENT 1
   switch (this->implementation) {
@@ -184,12 +185,10 @@ void Ped::Model::tick() {
       agents[i]->updateWaypoint();
     }
     for (int i = 0; i < n_padded; i += 16) {
-      __mmask16 mask = (num_agents - i >= 16) ? 0xFFFF : (1 << (num_agents - i)) - 1;
-
-      __m512 ax = _mm512_maskz_load_ps(mask, &agentX[i]);
-      __m512 ay = _mm512_maskz_load_ps(mask, &agentY[i]);
-      __m512 dx = _mm512_maskz_load_ps(mask, &destX[i]);
-      __m512 dy = _mm512_maskz_load_ps(mask, &destY[i]);
+      __m512 ax = _mm512_load_ps(&agentX[i]);
+      __m512 ay = _mm512_load_ps(&agentY[i]);
+      __m512 dx = _mm512_load_ps(&destX[i]);
+      __m512 dy = _mm512_load_ps(&destY[i]);
 
       __m512 diffX = _mm512_sub_ps(dx, ax);
       __m512 diffY = _mm512_sub_ps(dy, ay);
@@ -197,6 +196,9 @@ void Ped::Model::tick() {
       __m512 lenSq = _mm512_add_ps(_mm512_mul_ps(diffX, diffX),
                                    _mm512_mul_ps(diffY, diffY));
       __m512 len = _mm512_sqrt_ps(lenSq);
+
+      __m512 zero = _mm512_setzero_ps();
+      __m512 mask = _mm512_cmp_ps_mask(len, zero, _CMP_GT_OQ);
 
       __m512 stepX = _mm512_maskz_div_ps(mask, diffX, len);
       __m512 stepY = _mm512_maskz_div_ps(mask, diffY, len);
@@ -220,12 +222,10 @@ void Ped::Model::tick() {
     // Parallelized Vectorized calculation (OMP + AVX-512)
 #pragma omp parallel for
     for (int i = 0; i < n_padded; i += 16) {
-      __mmask16 mask = (num_agents - i >= 16) ? 0xFFFF : (1 << (num_agents - i)) - 1;
-
-      __m512 ax = _mm512_maskz_load_ps(mask, &agentX[i]);
-      __m512 ay = _mm512_maskz_load_ps(mask, &agentY[i]);
-      __m512 dx = _mm512_maskz_load_ps(mask, &destX[i]);
-      __m512 dy = _mm512_maskz_load_ps(mask, &destY[i]);
+      __m512 ax = _mm512_load_ps(&agentX[i]);
+      __m512 ay = _mm512_load_ps(&agentY[i]);
+      __m512 dx = _mm512_load_ps(&destX[i]);
+      __m512 dy = _mm512_load_ps(&destY[i]);
 
       __m512 diffX = _mm512_sub_ps(dx, ax);
       __m512 diffY = _mm512_sub_ps(dy, ay);
@@ -233,6 +233,9 @@ void Ped::Model::tick() {
       __m512 lenSq = _mm512_add_ps(_mm512_mul_ps(diffX, diffX),
                                    _mm512_mul_ps(diffY, diffY));
       __m512 len = _mm512_sqrt_ps(lenSq);
+
+      __m512 zero = _mm512_setzero_ps();
+      __m512 mask = _mm512_cmp_ps_mask(len, zero, _CMP_GT_OQ);
 
       __m512 stepX = _mm512_maskz_div_ps(mask, diffX, len);
       __m512 stepY = _mm512_maskz_div_ps(mask, diffY, len);
@@ -252,7 +255,8 @@ void Ped::Model::tick() {
     for (int i = 0; i < num_agents; ++i) {
       agents[i]->updateWaypoint();
     }
-    launch_cuda_tick(agentX, agentY, destX, destY, desiredX, desiredY, n_padded);
+    launch_cuda_tick(agentX, agentY, destX, destY, desiredX, desiredY,
+                     n_padded);
     cudaDeviceSynchronize();
     break;
   }
