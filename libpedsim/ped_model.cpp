@@ -265,7 +265,6 @@ void Ped::Model::tick() {
     }
     launch_cuda_tick(agentX, agentY, destX, destY, desiredX, desiredY,
                      n_padded);
-    cudaDeviceSynchronize();
     break;
   }
   default: {
