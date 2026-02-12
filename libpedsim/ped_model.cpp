@@ -260,11 +260,13 @@ void Ped::Model::tick() {
     break;
   }
   case Ped::CUDA: {
+#pragma omp parallel for
     for (int i = 0; i < num_agents; ++i) {
       agents[i]->updateWaypoint();
     }
     launch_cuda_tick(agentX, agentY, destX, destY, desiredX, desiredY,
                      num_agents);
+    cudaDeviceSynchronize();
     break;
   }
   default: {
