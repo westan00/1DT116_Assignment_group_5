@@ -207,7 +207,7 @@ void Ped::Model::tick() {
           _mm512_roundscale_ps(_mm512_add_ps(ax, stepX),
                                _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
       __m512 desY =
-          _mm512_roundscale_ps(_mm512_add_ps(ax, stepX),
+          _mm512_roundscale_ps(_mm512_add_ps(ay, stepY),
                                _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
 
       _mm512_store_ps(&desiredX[i], desX);
@@ -248,7 +248,7 @@ void Ped::Model::tick() {
           _mm512_roundscale_ps(_mm512_add_ps(ax, stepX),
                                _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
       __m512 desY =
-          _mm512_roundscale_ps(_mm512_add_ps(ax, stepX),
+          _mm512_roundscale_ps(_mm512_add_ps(ay, stepY),
                                _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
 
       _mm512_store_ps(&desiredX[i], desX);
