@@ -17,8 +17,8 @@ __global__ void cuda_tick_kernel(float *agentX, float *agentY, float *destX,
 
     if (lenSq > 0.000001f) {
       float invLen = rsqrtf(lenSq);
-      float stepX = diffX * len;
-      float stepY = diffY * len;
+      float stepX = diffX * invLen;
+      float stepY = diffY * invLen;
 
       float desX = roundf(ax + stepX);
       float desY = roundf(ay + stepY);
