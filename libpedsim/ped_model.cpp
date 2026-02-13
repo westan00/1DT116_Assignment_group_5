@@ -58,7 +58,7 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
 
   // Allocate and initialize SoA arrays for VECTOR implementation
   num_agents = agents.size();
-  if (implementation == Ped::VECTOR or implementation == Ped::VECTOROMP) {
+  if (implementation == Ped::VECTOR or implementation == Ped::VECTOR_OMP) {
     n_padded = (num_agents + 15) / 16 * 16; // Pad to multiple of 16 for AVX-512
   } else {
     n_padded = num_agents;
