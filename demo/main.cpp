@@ -84,6 +84,7 @@ int main(int argc, char *argv[]) {
         {"pthread", no_argument, NULL, 'p'},
         {"seq", no_argument, NULL, 'q'},
         {"simdomp", no_argument, NULL, 'v'},
+        {"cudafull", no_argument, NULL, 'f'},
         {0, 0, 0, 0} // End of options
     };
 
@@ -124,6 +125,11 @@ int main(int argc, char *argv[]) {
       std::cout << "Option --cuda activated\n";
       implementation_to_test = Ped::CUDA;
       break;
+    case 'f':
+      // Handle --cudafull
+      std::cout << "Option --cudafull activated\n";
+      implementation_to_test = Ped::CUDA_FULL;
+      break;
     case 's':
       // Handle --simd
       std::cout << "Option --simd activated\n";
@@ -132,7 +138,7 @@ int main(int argc, char *argv[]) {
     case 'v':
       // Hanlde --simdomp
       std::cout << "Option --simdomp activated\n";
-      implementation_to_test = Ped::VECTOROMP;
+      implementation_to_test = Ped::VECTOR_OMP;
       break;
     case 'o':
       // Handle --omp

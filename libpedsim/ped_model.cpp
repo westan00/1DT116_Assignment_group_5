@@ -19,11 +19,15 @@
 #include <thread>
 #include <vector>
 
-extern "C" void launch_cuda_tick(float *agentX, float *agentY, float *desiredX,
-                                 float *desiredY, int *currentWpIdx,
-                                 int *wpSequences, int *wpSequencesLen,
-                                 float *wpX, float *wpY, float *wpR,
-                                 int maxWpsPerAgent, int n);
+extern "C" void launch_cuda_tick(float *agentX, float *agentY, float *desX,
+                                 float *dexY, float *desiredX, float *desiredY,
+                                 int n);
+extern "C" void launch_cuda_tick_full(float *agentX, float *agentY,
+                                      float *desiredX, float *desiredY,
+                                      int *currentWpIdx, int *wpSequences,
+                                      int *wpSequencesLen, float *wpX,
+                                      float *wpY, float *wpR,
+                                      int maxWpsPerAgent, int n);
 
 #ifndef NOCUDA
 #include "cuda_testkernel.h"
@@ -60,7 +64,7 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
     n_padded = num_agents;
   }
 
-  if (implementation == Ped::CUDA) {
+  if (implementation == Ped::CUDA_FULL) {
     std::map<Twaypoint *, int> wpToId;
     int num_destinations = destinationsInScenario.size();
 
@@ -105,6 +109,13 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
       currentWpIdx[i] = 0;
     }
 
+    cudaMallocManaged(&agentX, n_padded * sizeof(float));
+    cudaMallocManaged(&agentY, n_padded * sizeof(float));
+    cudaMallocManaged(&destX, n_padded * sizeof(float));
+    cudaMallocManaged(&destY, n_padded * sizeof(float));
+    cudaMallocManaged(&desiredX, n_padded * sizeof(float));
+    cudaMallocManaged(&desiredY, n_padded * sizeof(float));
+  } else if (implementation == Ped::CUDA) {
     cudaMallocManaged(&agentX, n_padded * sizeof(float));
     cudaMallocManaged(&agentY, n_padded * sizeof(float));
     cudaMallocManaged(&destX, n_padded * sizeof(float));
@@ -265,7 +276,7 @@ void Ped::Model::tick() {
     }
     break;
   }
-  case Ped::VECTOROMP: {
+  case Ped::VECTOR_OMP: {
 #pragma omp parallel for
     for (int i = 0; i < num_agents; ++i) {
       agents[i]->updateWaypoint();
@@ -307,9 +318,18 @@ void Ped::Model::tick() {
     break;
   }
   case Ped::CUDA: {
-    launch_cuda_tick(agentX, agentY, desiredX, desiredY, currentWpIdx,
-                     wpSequences, wpSequencesLen, wpX, wpY, wpR, maxWpsPerAgent,
+#pragma omp parallel for
+    for (int i = 0; i < num_agents; ++i) {
+      agents[i]->updateWaypoint();
+    }
+    launch_cuda_tick(agentX, agentX, destX, destY, desiredX, desiredY,
                      num_agents);
+    cudaDeviceSynchronize();
+  }
+  case Ped::CUDA_FULL: {
+    launch_cuda_tick_full(agentX, agentY, desiredX, desiredY, currentWpIdx,
+                          wpSequences, wpSequencesLen, wpX, wpY, wpR,
+                          maxWpsPerAgent, num_agents);
 
     cudaDeviceSynchronize();
     break;
@@ -405,7 +425,7 @@ void Ped::Model::cleanup() {
 }
 
 Ped::Model::~Model() {
-  if (implementation == Ped::CUDA) {
+  if (implementation == Ped::CUDA_FULL) {
     cudaFree(agentX);
     cudaFree(agentY);
     cudaFree(destX);
@@ -418,6 +438,13 @@ Ped::Model::~Model() {
     cudaFree(wpSequences);
     cudaFree(wpSequencesLen);
     cudaFree(currentWpIdx);
+  } else if (implementation == Ped::CUDA) {
+    cudaFree(agentX);
+    cudaFree(agentY);
+    cudaFree(destX);
+    cudaFree(destY);
+    cudaFree(desiredX);
+    cudaFree(desiredY);
   } else {
     free(agentX);
     free(agentY);

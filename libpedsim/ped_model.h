@@ -24,7 +24,7 @@ class Tagent;
 
 // The implementation modes for Assignment 1 + 2:
 // chooses which implementation to use for tick()
-enum IMPLEMENTATION { CUDA, VECTOR, OMP, PTHREAD, SEQ, VECTOROMP };
+enum IMPLEMENTATION { CUDA, VECTOR, OMP, PTHREAD, SEQ, VECTOR_OMP, CUDA_FULL };
 
 class Model {
 public:
