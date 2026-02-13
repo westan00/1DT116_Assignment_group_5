@@ -325,6 +325,7 @@ void Ped::Model::tick() {
     launch_cuda_tick(agentX, agentX, destX, destY, desiredX, desiredY,
                      num_agents);
     cudaDeviceSynchronize();
+    break;
   }
   case Ped::CUDA_FULL: {
     launch_cuda_tick_full(agentX, agentY, desiredX, desiredY, currentWpIdx,
