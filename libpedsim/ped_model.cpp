@@ -37,7 +37,7 @@ extern "C" void launch_cuda_tick_full(float *agentX, float *agentY,
 
 void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
                        std::vector<Twaypoint *> destinationsInScenario,
-                       IMPLEMENTATION implementation) {
+                       IMPLEMENTATION implementation, bool cuda_sync) {
 #ifndef NOCUDA
   // Convenience test: does CUDA work on this machine?
   cuda_test();
@@ -55,6 +55,7 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
 
   // Sets the chosen implemenation. Standard in the given code is SEQ
   this->implementation = implementation;
+  this->cuda_sync = cuda_sync;
 
   // Allocate and initialize SoA arrays for VECTOR implementation
   num_agents = agents.size();
@@ -324,7 +325,9 @@ void Ped::Model::tick() {
     }
     launch_cuda_tick(agentX, agentX, destX, destY, desiredX, desiredY,
                      num_agents);
-    cudaDeviceSynchronize();
+    if (cuda_sync) {
+      cudaDeviceSynchronize();
+    }
     break;
   }
   case Ped::CUDA_FULL: {
@@ -332,7 +335,9 @@ void Ped::Model::tick() {
                           wpSequences, wpSequencesLen, wpX, wpY, wpR,
                           maxWpsPerAgent, num_agents);
 
-    cudaDeviceSynchronize();
+    if (cuda_sync) {
+      cudaDeviceSynchronize();
+    }
     break;
   }
   default: {

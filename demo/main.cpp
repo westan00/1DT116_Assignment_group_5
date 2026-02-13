@@ -36,7 +36,9 @@
 
 void print_usage(char *command) {
   printf("Usage: %s [--timing-mode|--export-trace[=export_trace.bin]] "
-         "[--max-steps=100] [--help] [--cuda|--simd|--omp|--pthread|--seq] "
+         "[--max-steps=100] [--help] "
+         "[--cuda|--simd|--omp|--pthread|--seq|--simdomp|--cudafull] "
+         "[--no-sync] "
          "[scenario filename]\n",
          command);
   printf("There are three modes of execution:\n");
@@ -67,6 +69,7 @@ int main(int argc, char *argv[]) {
   int max_steps = 1000;
   Ped::IMPLEMENTATION implementation_to_test = Ped::SEQ;
   std::string export_trace_file = "";
+  bool cuda_sync = true;
 
   // Parsing the command line arguments. Feel free to add your own
   // configurations.
@@ -85,6 +88,7 @@ int main(int argc, char *argv[]) {
         {"seq", no_argument, NULL, 'q'},
         {"simdomp", no_argument, NULL, 'v'},
         {"cudafull", no_argument, NULL, 'f'},
+        {"no-sync", no_argument, NULL, 'n'},
         {0, 0, 0, 0} // End of options
     };
 
@@ -155,6 +159,11 @@ int main(int argc, char *argv[]) {
       std::cout << "Option --seq activated\n";
       implementation_to_test = Ped::SEQ;
       break;
+    case 'n':
+      // Handle --no-sync
+      std::cout << "Option --no-sync activated\n";
+      cuda_sync = false;
+      break;
     case 'm':
       // Handle --max-steps with a numerical argument
       max_steps = std::stoi(optarg); // Convert the argument to an integer
@@ -215,7 +224,7 @@ int main(int argc, char *argv[]) {
         Ped::Model model;
         ParseScenario parser(scenefile);
         model.setup(parser.getAgents(), parser.getWaypoints(),
-                    implementation_to_test);
+                    implementation_to_test, cuda_sync);
         Simulation *simulation = new TimingSimulation(model, max_steps);
         // Simulation mode to use when profiling (without any GUI)
         std::cout << "Running target version...\n";
@@ -236,7 +245,7 @@ int main(int argc, char *argv[]) {
       Ped::Model model;
       ParseScenario parser(scenefile);
       model.setup(parser.getAgents(), parser.getWaypoints(),
-                  implementation_to_test);
+                  implementation_to_test, cuda_sync);
 
       Simulation *simulation =
           new ExportSimulation(model, max_steps, export_trace_file);
@@ -259,7 +268,7 @@ int main(int argc, char *argv[]) {
       Ped::Model model;
       ParseScenario parser(scenefile);
       model.setup(parser.getAgents(), parser.getWaypoints(),
-                  implementation_to_test);
+                  implementation_to_test, cuda_sync);
 
       QApplication app(argc, argv);
       MainWindow mainwindow(model);

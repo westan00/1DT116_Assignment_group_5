@@ -31,7 +31,7 @@ public:
   // Sets everything up
   void setup(std::vector<Tagent *> agentsInScenario,
              std::vector<Twaypoint *> destinationsInScenario,
-             IMPLEMENTATION implementation);
+             IMPLEMENTATION implementation, bool cuda_sync = true);
 
   // Coordinates a time step in the scenario: move all agents by one step (if
   // applicable).
@@ -59,6 +59,9 @@ private:
   // should be used for calculating the desired positions of
   // agents (Assignment 1)
   IMPLEMENTATION implementation;
+
+  // Whether to use cudaDeviceSynchronize() after CUDA kernel launches
+  bool cuda_sync;
 
   // The agents in this scenario
   std::vector<Tagent *> agents;
