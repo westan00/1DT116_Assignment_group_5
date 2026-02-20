@@ -267,10 +267,11 @@ void Ped::Model::tick() {
 
       _mm512_store_ps(&desiredX[i], desX);
       _mm512_store_ps(&desiredY[i], desY);
-
-      _mm512_store_ps(&agentX[i], desX);
-      _mm512_store_ps(&agentY[i], desY);
     }
+    for (Ped::Tagent *agent : agents) {
+      move(agent);
+    }
+
     break;
   }
   case Ped::VECTOR_OMP: {
@@ -308,9 +309,9 @@ void Ped::Model::tick() {
 
       _mm512_store_ps(&desiredX[i], desX);
       _mm512_store_ps(&desiredY[i], desY);
-
-      _mm512_store_ps(&agentX[i], desX);
-      _mm512_store_ps(&agentY[i], desY);
+    }
+    for (Ped::Tagent *agent : agents) {
+      move(agent);
     }
     break;
   }
