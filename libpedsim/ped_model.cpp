@@ -164,10 +164,7 @@ void Ped::Model::tick_thread(const int num_threads, int id) {
   int end = start + chunk_size + (id < remainder ? 1 : 0);
 
   for (int i = start; i < end; ++i) {
-    auto *agent = agents[i];
-    agent->computeNextDesiredPosition();
-    agent->setX(agent->getDesiredX());
-    agent->setY(agent->getDesiredY());
+    move(agents[i])
   }
 }
 
@@ -198,18 +195,14 @@ void Ped::Model::tick() {
   switch (this->implementation) {
   case Ped::SEQ: {
     for (Ped::Tagent *agent : agents) {
-      agent->computeNextDesiredPosition();
-      agent->setX(agent->getDesiredX());
-      agent->setY(agent->getDesiredY());
+      move(agent)
     }
     break;
   }
   case Ped::OMP: {
 #pragma omp parallel for default(none) shared(agents)
     for (int i = 0; i < agents.size(); ++i) {
-      agents[i]->computeNextDesiredPosition();
-      agents[i]->setX(agents[i]->getDesiredX());
-      agents[i]->setY(agents[i]->getDesiredY());
+      move(agents[i])
     }
     break;
   }
