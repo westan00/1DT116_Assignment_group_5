@@ -194,7 +194,7 @@ void Ped::Model::tick() {
   // EDIT HERE FOR ASSIGNMENT 1
   switch (this->implementation) {
   case Ped::SEQ: {
-    for (Ped::Tagent *agent : agents) {
+    for (agent : agents) {
       move(agent);
     }
     break;
@@ -334,8 +334,8 @@ void Ped::Model::tick() {
     break;
   }
   default: {
-    for (Ped::Tagent *agent : agents) {
-      move(agents)
+    for (agent : agents) {
+      move(agent)
     }
   }
   }
