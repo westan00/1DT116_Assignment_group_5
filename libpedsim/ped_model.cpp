@@ -339,7 +339,7 @@ void Ped::Model::tick() {
   default: {
     for (Ped::Tagent *agent : agents) {
       agent->computeNextDesiredPosition();
-      move(agent)
+      move(agent);
     }
   }
   }
