@@ -45,7 +45,7 @@ public:
   // Thread work function for pthread
   void tick_thread(const int num_threads, int id);
 
-  int find_region(Ped::Tagent *agent);
+  int find_region(int x, int y);
 
   // Adds an agent to the tree structure
   void placeAgent(const Ped::Tagent *a);
