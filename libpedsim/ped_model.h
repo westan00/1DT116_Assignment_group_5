@@ -15,6 +15,7 @@
 #include <atomic>
 #include <immintrin.h>
 #include <map>
+#include <mutex>
 #include <pthread.h>
 #include <set>
 #include <vector>
@@ -88,6 +89,7 @@ private:
   int numRegions;
 
   struct Region {
+    int id;
     int x_min, x_max, y_min, y_max;
     std::vector<Tagent *> agentsInRegion;
   };
