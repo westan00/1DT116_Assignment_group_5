@@ -522,7 +522,6 @@ void Ped::Model::move(Ped::Model::Region *region) {
     bool moved = false;
 
     for (auto const &alt : prioritizedAlternatives) {
-      // Fast local check — no lock needed
       if (claimedPositions.count(alt) > 0) {
         continue;
       }
@@ -530,18 +529,13 @@ void Ped::Model::move(Ped::Model::Region *region) {
       int targetId = find_region(alt.first, alt.second);
       int oldRegionId = find_region(agent->getX(), agent->getY());
 
-      // Ordered locking to prevent deadlock
-      int firstId = std::min(oldRegionId, targetId);
-      int secondId = std::max(oldRegionId, targetId);
-
-      std::unique_lock<std::mutex> lock1(*regionMutexes[firstId]);
-      std::unique_lock<std::mutex> lock2(*regionMutexes[secondId],
+      std::unique_lock<std::mutex> lock1(*regionMutexes[oldRegionId]);
+      std::unique_lock<std::mutex> lock2(*regionMutexes[targetId],
                                          std::defer_lock);
-      if (firstId != secondId) {
+      if (oldRegionId != targetId) {
         lock2.lock();
       }
 
-      // Check occupancy under lock — no TOCTOU possible
       bool taken = false;
       for (auto neighbor : regions[targetId].agentsInRegion) {
         if (neighbor == agent)
@@ -553,7 +547,6 @@ void Ped::Model::move(Ped::Model::Region *region) {
       }
 
       if (!taken) {
-        // Remove from old region
         auto &oldAgents = regions[oldRegionId].agentsInRegion;
         oldAgents.erase(std::remove(oldAgents.begin(), oldAgents.end(), agent),
                         oldAgents.end());
