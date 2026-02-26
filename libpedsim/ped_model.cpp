@@ -496,11 +496,8 @@ void Ped::Model::move(Ped::Model::Region *region) {
   {
     std::lock_guard<std::mutex> lock(*regionMutexes[region->id]);
     agentsToProcess = region->agentsInRegion;
-    // Do NOT clear the region here — we need the collision info.
   }
 
-  // Local set to track positions claimed by agents in this batch,
-  // preventing intra-region collisions.
   std::set<std::pair<int, int>> claimedPositions;
 
   for (Ped::Tagent *agent : agentsToProcess) {
@@ -525,76 +522,53 @@ void Ped::Model::move(Ped::Model::Region *region) {
     bool moved = false;
 
     for (auto const &alt : prioritizedAlternatives) {
-      // First: check local claims (fast, no locking needed)
+      // Fast local check — no lock needed
       if (claimedPositions.count(alt) > 0) {
         continue;
       }
 
       int targetId = find_region(alt.first, alt.second);
-      // Lock the target region to check for occupancy
-      // Use ordered locking (always lock lower id first) to prevent deadlock
+      int oldRegionId = find_region(agent->getX(), agent->getY());
+
+      // Ordered locking to prevent deadlock
+      int firstId = std::min(oldRegionId, targetId);
+      int secondId = std::max(oldRegionId, targetId);
+
+      std::unique_lock<std::mutex> lock1(*regionMutexes[firstId]);
+      std::unique_lock<std::mutex> lock2(*regionMutexes[secondId],
+                                         std::defer_lock);
+      if (firstId != secondId) {
+        lock2.lock();
+      }
+
+      // Check occupancy under lock — no TOCTOU possible
       bool taken = false;
-      {
-        std::lock_guard<std::mutex> targetLock(*regionMutexes[targetId]);
-        for (auto neighbor : regions[targetId].agentsInRegion) {
-          if (neighbor == agent)
-            continue; // skip self
-          if (neighbor->getX() == alt.first && neighbor->getY() == alt.second) {
-            taken = true;
-            break;
-          }
+      for (auto neighbor : regions[targetId].agentsInRegion) {
+        if (neighbor == agent)
+          continue;
+        if (neighbor->getX() == alt.first && neighbor->getY() == alt.second) {
+          taken = true;
+          break;
         }
       }
 
       if (!taken) {
-        // Perform the move
-        int oldRegionId = find_region(agent->getX(), agent->getY());
+        // Remove from old region
+        auto &oldAgents = regions[oldRegionId].agentsInRegion;
+        oldAgents.erase(std::remove(oldAgents.begin(), oldAgents.end(), agent),
+                        oldAgents.end());
 
-        // Lock both old and target regions in consistent order to avoid
-        // deadlock
-        int firstId = std::min(oldRegionId, targetId);
-        int secondId = std::max(oldRegionId, targetId);
+        agent->setX(alt.first);
+        agent->setY(alt.second);
 
-        std::unique_lock<std::mutex> lock1(*regionMutexes[firstId]);
-        std::unique_lock<std::mutex> lock2(*regionMutexes[secondId],
-                                           std::defer_lock);
-        if (firstId != secondId) {
-          lock2.lock();
-        }
-
-        // Re-check occupancy under lock (another thread may have placed an
-        // agent here between our check and the lock acquisition)
-        bool stillFree = true;
-        for (auto neighbor : regions[targetId].agentsInRegion) {
-          if (neighbor == agent)
-            continue;
-          if (neighbor->getX() == alt.first && neighbor->getY() == alt.second) {
-            stillFree = false;
-            break;
-          }
-        }
-
-        if (stillFree) {
-          // Remove from old region
-          auto &oldAgents = regions[oldRegionId].agentsInRegion;
-          oldAgents.erase(
-              std::remove(oldAgents.begin(), oldAgents.end(), agent),
-              oldAgents.end());
-
-          agent->setX(alt.first);
-          agent->setY(alt.second);
-
-          regions[targetId].agentsInRegion.push_back(agent);
-          claimedPositions.insert(alt);
-          moved = true;
-          break;
-        }
+        regions[targetId].agentsInRegion.push_back(agent);
+        claimedPositions.insert(alt);
+        moved = true;
+        break;
       }
     }
 
     if (!moved) {
-      // Agent stays — claim current position so no other agent in this
-      // batch tries to take it
       claimedPositions.insert(pCurrent);
     }
   }
