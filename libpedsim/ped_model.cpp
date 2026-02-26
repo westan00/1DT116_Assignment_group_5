@@ -400,16 +400,8 @@ void Ped::Model::tick() {
       int regionId = find_region(agent->getX(), agent->getY());
       regions[regionId].agentsInRegion.push_back(agent);
     }
-
-    // Global set of occupied positions — shared across all regions
-    std::set<std::pair<int, int>> occupiedPositions;
-    // Pre-populate with all current agent positions
-    for (Ped::Tagent *agent : agents) {
-      occupiedPositions.insert({agent->getX(), agent->getY()});
-    }
-
     for (auto &region : regions) {
-      move(&region, occupiedPositions);
+      move(&region);
     }
     break;
   }
@@ -424,17 +416,9 @@ void Ped::Model::tick() {
       std::lock_guard<std::mutex> lock(*regionMutexes[regionId]);
       regions[regionId].agentsInRegion.push_back(agents[i]);
     }
-
-    std::set<std::pair<int, int>> occupiedPositions;
-    for (Ped::Tagent *agent : agents) {
-      occupiedPositions.insert({agent->getX(), agent->getY()});
-    }
-    std::mutex occupiedMutex;
-
-#pragma omp parallel for default(none)                                         \
-    shared(regions, numRegions, occupiedPositions, occupiedMutex)
+#pragma omp parallel for default(none) shared(regions, numRegions)
     for (int i = 0; i < numRegions; ++i) {
-      move(&regions[i], occupiedPositions, occupiedMutex);
+      move(&regions[i]);
     }
     break;
   }
@@ -507,46 +491,16 @@ void Ped::Model::move(Ped::Tagent *agent) {
   }
 }
 
-void Ped::Model::move(Ped::Model::Region *region,
-                      std::set<std::pair<int, int>> &occupiedPositions) {
-  for (Ped::Tagent *agent : region->agentsInRegion) {
-    std::vector<std::pair<int, int>> prioritizedAlternatives;
-    std::pair<int, int> pDesired(agent->getDesiredX(), agent->getDesiredY());
-    prioritizedAlternatives.push_back(pDesired);
-
-    int diffX = pDesired.first - agent->getX();
-    int diffY = pDesired.second - agent->getY();
-    std::pair<int, int> p1, p2;
-    if (diffX == 0 || diffY == 0) {
-      p1 = std::make_pair(pDesired.first + diffY, pDesired.second + diffX);
-      p2 = std::make_pair(pDesired.first - diffY, pDesired.second - diffX);
-    } else {
-      p1 = std::make_pair(pDesired.first, agent->getY());
-      p2 = std::make_pair(agent->getX(), pDesired.second);
-    }
-    prioritizedAlternatives.push_back(p1);
-    prioritizedAlternatives.push_back(p2);
-
-    std::pair<int, int> pCurrent(agent->getX(), agent->getY());
-
-    for (auto const &alt : prioritizedAlternatives) {
-      if (occupiedPositions.count(alt) == 0) {
-        // Claim new position, release old one
-        occupiedPositions.erase(pCurrent);
-        occupiedPositions.insert(alt);
-        agent->setX(alt.first);
-        agent->setY(alt.second);
-        break;
-      }
-    }
-    // If no alternative was free, agent stays — pCurrent remains in the set
+void Ped::Model::move(Ped::Model::Region *region) {
+  std::vector<Ped::Tagent *> agentsToProcess;
+  {
+    std::lock_guard<std::mutex> lock(*regionMutexes[region->id]);
+    agentsToProcess = region->agentsInRegion;
   }
-}
 
-void Ped::Model::move(Ped::Model::Region *region,
-                      std::set<std::pair<int, int>> &occupiedPositions,
-                      std::mutex &occupiedMutex) {
-  for (Ped::Tagent *agent : region->agentsInRegion) {
+  std::set<std::pair<int, int>> claimedPositions;
+
+  for (Ped::Tagent *agent : agentsToProcess) {
     std::vector<std::pair<int, int>> prioritizedAlternatives;
     std::pair<int, int> pDesired(agent->getDesiredX(), agent->getDesiredY());
     prioritizedAlternatives.push_back(pDesired);
@@ -565,16 +519,57 @@ void Ped::Model::move(Ped::Model::Region *region,
     prioritizedAlternatives.push_back(p2);
 
     std::pair<int, int> pCurrent(agent->getX(), agent->getY());
+    bool moved = false;
 
-    std::lock_guard<std::mutex> lock(occupiedMutex);
     for (auto const &alt : prioritizedAlternatives) {
-      if (occupiedPositions.count(alt) == 0) {
-        occupiedPositions.erase(pCurrent);
-        occupiedPositions.insert(alt);
+      // Fast local check — no lock needed
+      if (claimedPositions.count(alt) > 0) {
+        continue;
+      }
+
+      int targetId = find_region(alt.first, alt.second);
+      int oldRegionId = find_region(agent->getX(), agent->getY());
+
+      // Ordered locking to prevent deadlock
+      int firstId = std::min(oldRegionId, targetId);
+      int secondId = std::max(oldRegionId, targetId);
+
+      std::unique_lock<std::mutex> lock1(*regionMutexes[firstId]);
+      std::unique_lock<std::mutex> lock2(*regionMutexes[secondId],
+                                         std::defer_lock);
+      if (firstId != secondId) {
+        lock2.lock();
+      }
+
+      // Check occupancy under lock — no TOCTOU possible
+      bool taken = false;
+      for (auto neighbor : regions[targetId].agentsInRegion) {
+        if (neighbor == agent)
+          continue;
+        if (neighbor->getX() == alt.first && neighbor->getY() == alt.second) {
+          taken = true;
+          break;
+        }
+      }
+
+      if (!taken) {
+        // Remove from old region
+        auto &oldAgents = regions[oldRegionId].agentsInRegion;
+        oldAgents.erase(std::remove(oldAgents.begin(), oldAgents.end(), agent),
+                        oldAgents.end());
+
         agent->setX(alt.first);
         agent->setY(alt.second);
+
+        regions[targetId].agentsInRegion.push_back(agent);
+        claimedPositions.insert(alt);
+        moved = true;
         break;
       }
+    }
+
+    if (!moved) {
+      claimedPositions.insert(pCurrent);
     }
   }
 }

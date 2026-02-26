@@ -109,9 +109,7 @@ private:
   std::vector<std::unique_ptr<std::mutex>> regionMutexes;
 
   // Moves an agent towards its next position
-  void move(Region *region, std::set<std::pair<int, int>> &occupiedPositions);
-  void move(Region *region, std::set<std::pair<int, int>> &occupiedPositions,
-            std::mutex &occupiedMutex);
+  void move(Region *region);
   void move(Ped::Tagent *agent);
 
   ////////////
