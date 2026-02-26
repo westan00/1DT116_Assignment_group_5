@@ -177,6 +177,10 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
         idx++;
       }
     }
+    for (auto agent : agentsInScenario) {
+      int regionId = find_region(agent->getX(), agent->getY());
+      regions[regionId].agentsInRegion.push_back(agent);
+    }
   }
 
   // Set up heatmap (relevant for Assignment 4)
@@ -393,29 +397,11 @@ void Ped::Model::tick() {
   }
   case Ped::SEQ_REGION: {
     for (auto &region : regions) {
-      region.agentsInRegion.clear();
-    }
-    for (Ped::Tagent *agent : agents) {
-      agent->computeNextDesiredPosition();
-      int regionId = find_region(agent->getX(), agent->getY());
-      regions[regionId].agentsInRegion.push_back(agent);
-    }
-    for (auto &region : regions) {
       move(&region);
     }
     break;
   }
   case Ped::OMP_REGION: {
-    for (auto &region : regions) {
-      region.agentsInRegion.clear();
-    }
-#pragma omp parallel for default(none) shared(agents, regions, regionMutexes)
-    for (int i = 0; i < agents.size(); ++i) {
-      agents[i]->computeNextDesiredPosition();
-      int regionId = find_region(agents[i]->getX(), agents[i]->getY());
-      std::lock_guard<std::mutex> lock(*regionMutexes[regionId]);
-      regions[regionId].agentsInRegion.push_back(agents[i]);
-    }
 #pragma omp parallel for default(none) shared(regions, numRegions)
     for (int i = 0; i < numRegions; ++i) {
       move(&regions[i]);
