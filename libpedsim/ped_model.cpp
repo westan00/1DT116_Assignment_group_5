@@ -498,6 +498,8 @@ void Ped::Model::move(Ped::Model::Region *region) {
     agentsToProcess = region->agentsInRegion;
   }
 
+  std::set<std::pair<int, int>> claimedPositions;
+
   for (Ped::Tagent *agent : agentsToProcess) {
     std::vector<std::pair<int, int>> prioritizedAlternatives;
     std::pair<int, int> pDesired(agent->getDesiredX(), agent->getDesiredY());
@@ -516,10 +518,26 @@ void Ped::Model::move(Ped::Model::Region *region) {
     prioritizedAlternatives.push_back(p1);
     prioritizedAlternatives.push_back(p2);
 
+    int backX = agent->getX() - diffX;
+    int backY = agent->getY() - diffY;
+    // Direct backoff
+    prioritizedAlternatives.push_back({backX, backY});
+    // Sideways backoff
+    if (diffX == 0 || diffY == 0) {
+      prioritizedAlternatives.push_back({backX + diffY, backY + diffX});
+      prioritizedAlternatives.push_back({backX - diffY, backY - diffX});
+    } else {
+      prioritizedAlternatives.push_back({backX, agent->getY()});
+      prioritizedAlternatives.push_back({agent->getX(), backY});
+    }
+
     std::pair<int, int> pCurrent(agent->getX(), agent->getY());
     bool moved = false;
 
     for (auto const &alt : prioritizedAlternatives) {
+      if (claimedPositions.count(alt) > 0) {
+        continue;
+      }
 
       int targetId = find_region(alt.first, alt.second);
       int oldRegionId = find_region(agent->getX(), agent->getY());
@@ -527,6 +545,7 @@ void Ped::Model::move(Ped::Model::Region *region) {
       int firstId = std::min(oldRegionId, targetId);
       int secondId = std::max(oldRegionId, targetId);
 
+      std::unique_lock<std::mutex> lock1(*regionMutexes[firstId]);
       std::unique_lock<std::mutex> lock2(*regionMutexes[secondId],
                                          std::defer_lock);
       if (firstId != secondId) {
@@ -552,9 +571,14 @@ void Ped::Model::move(Ped::Model::Region *region) {
         agent->setY(alt.second);
 
         regions[targetId].agentsInRegion.push_back(agent);
+        claimedPositions.insert(alt);
         moved = true;
         break;
       }
+    }
+
+    if (!moved) {
+      claimedPositions.insert(pCurrent);
     }
   }
 }
