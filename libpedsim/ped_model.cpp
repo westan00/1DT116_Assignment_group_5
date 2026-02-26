@@ -355,8 +355,22 @@ case Ped::VECTOR_OMP: {
 }
 case Ped::CUDA: {
 #pragma omp parallel for
+<<<<<<< HEAD
   for (int i = 0; i < num_agents; ++i) {
     agents[i]->updateWaypoint();
+=======
+    for (int i = 0; i < num_agents; ++i) {
+      agents[i]->updateWaypoint();
+    }
+    launch_cuda_tick(agentX, destX, destY, desiredX, desiredY, num_agents);
+    for (Ped::Tagent *agent : agents) {
+      move(agent);
+    }
+    if (cuda_sync) {
+      cudaDeviceSynchronize();
+    }
+    break;
+>>>>>>> 2b24d4c (cuda move)
   }
   launch_cuda_tick(agentX, agentX, destX, destY, desiredX, desiredY,
                    num_agents);
@@ -370,8 +384,18 @@ case Ped::CUDA_FULL: {
                         wpSequences, wpSequencesLen, wpX, wpY, wpR,
                         maxWpsPerAgent, num_agents);
 
+<<<<<<< HEAD
   if (cuda_sync) {
     cudaDeviceSynchronize();
+=======
+    for (Ped::Tagent *agent : agents) {
+      move(agent);
+    }
+    if (cuda_sync) {
+      cudaDeviceSynchronize();
+    }
+    break;
+>>>>>>> 2b24d4c (cuda move)
   }
   break;
 }

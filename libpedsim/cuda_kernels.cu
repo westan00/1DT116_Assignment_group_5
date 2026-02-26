@@ -26,8 +26,6 @@ __global__ void cuda_tick_kernel(float *agentX, float *agentY, float *destX,
       desiredX[i] = desX;
       desiredY[i] = desY;
 
-      agentX[i] = desX;
-      agentY[i] = desY;
     } else {
       desiredX[i] = ax;
       desiredY[i] = ay;
@@ -79,8 +77,6 @@ __global__ void cuda_tick_kernel_full(float *agentX, float *agentY,
       desiredX[i] = desX;
       desiredY[i] = desY;
 
-      agentX[i] = desX;
-      agentY[i] = desY;
     } else {
       desiredX[i] = ax;
       desiredY[i] = ay;
