@@ -43,6 +43,8 @@ public:
   // Thread work function for pthread
   void tick_thread(const int num_threads, int id);
 
+  int find_region(Ped::Tagent *agent);
+
   // Adds an agent to the tree structure
   void placeAgent(const Ped::Tagent *a);
 
@@ -93,7 +95,7 @@ private:
   std::vector<Region> regions;
 
   // Moves an agent towards its next position
-  void move(Ped::Tagent *agent);
+  void move(Region *region);
 
   ////////////
   /// Everything below here won't be relevant until Assignment 3

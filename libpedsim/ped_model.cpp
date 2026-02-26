@@ -150,6 +150,7 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
 
   this->numRegions = 4;
   int len = sqrt(numRegions); // 4
+  regions.resize(numRegions);
   idx = 0;
   for (int i = 0; i < len; ++i) {
     int x_min = (160 / len) * i;
@@ -158,10 +159,10 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
       int y_min = (120 / len) * j;
       int y_max = (120 / len) * (j + 1);
 
-      Regions[idx]->x_min = x_min;
-      Regions[idx]->x_max = x_max;
-      Regions[idx]->y_min = y_min;
-      Regions[idx]->y_max = y_max;
+      regions[idx].x_min = x_min;
+      regions[idx].x_max = x_max;
+      regions[idx].y_min = y_min;
+      regions[idx].y_max = y_max;
 
       idx++;
     }
@@ -171,8 +172,7 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
   setupHeatmapSeq();
 }
 
-void Ped::Model::find_region(Ped::Tagent agent) {
-  int len = this->numRegions;
+int Ped::Model::find_region(Ped::Tagent *agent) {
   float ax = agent->getX();
   float ay = agent->getY();
   int regionX = 0;
@@ -196,6 +196,7 @@ void Ped::Model::find_region(Ped::Tagent agent) {
   if (regionX == 1 && regionY == 1) {
     return 3;
   };
+  return -1:
 }
 
 /////////////////////////
@@ -384,13 +385,16 @@ void Ped::Model::tick() {
     break;
   }
   default: {
+    for (Ped::Model::Region &region : regions) {
+      region.agentsInRegion.clear();
+    }
     for (Ped::Tagent *agent : agents) {
       agent->computeNextDesiredPosition();
       int regionId = find_region(agent);
-      Region[regionId]->agentsInRegion.push_back(agent);
+      regions[regionId].agentsInRegion.push_back(agent);
     }
-    for (Ped::Model::Region *region : Region) {
-      move(region);
+    for (Ped::Model::Region &region : regions) {
+      move(&region);
     }
   }
   }
@@ -407,52 +411,56 @@ void Ped::Model::tick() {
     // set<const Ped::Tagent *> neighbors =
     // getNeighbors(agent->getX(), agent->getY(), 2);
 
-    set<const Ped::Tagent *> neighbors = region->agentsInRegion;
+    set<const Ped::Tagent *> neighbors(region->agentsInRegion.begin(),
+                                       region->agentsInRegion.end());
 
-    // Retrieve their positions
-    std::vector<std::pair<int, int>> takenPositions;
-    for (std::set<const Ped::Tagent *>::iterator neighborIt = neighbors.begin();
-         neighborIt != neighbors.end(); ++neighborIt) {
-      std::pair<int, int> position((*neighborIt)->getX(),
-                                   (*neighborIt)->getY());
-      takenPositions.push_back(position);
-    }
+    for (Ped::Tagent *agent : region->agentsInRegion) {
+      // Retrieve their positions
+      std::vector<std::pair<int, int>> takenPositions;
+      for (std::set<const Ped::Tagent *>::iterator neighborIt =
+               neighbors.begin();
+           neighborIt != neighbors.end(); ++neighborIt) {
+        std::pair<int, int> position((*neighborIt)->getX(),
+                                     (*neighborIt)->getY());
+        takenPositions.push_back(position);
+      }
 
-    // Compute the three alternative positions that would bring the agent
-    // closer to his desiredPosition, starting with the desiredPosition itself
-    std::vector<std::pair<int, int>> prioritizedAlternatives;
-    std::pair<int, int> pDesired(agent->getDesiredX(), agent->getDesiredY());
-    prioritizedAlternatives.push_back(pDesired);
+      // Compute the three alternative positions that would bring the agent
+      // closer to his desiredPosition, starting with the desiredPosition itself
+      std::vector<std::pair<int, int>> prioritizedAlternatives;
+      std::pair<int, int> pDesired(agent->getDesiredX(), agent->getDesiredY());
+      prioritizedAlternatives.push_back(pDesired);
 
-    int diffX = pDesired.first - agent->getX();
-    int diffY = pDesired.second - agent->getY();
-    std::pair<int, int> p1, p2;
-    if (diffX == 0 || diffY == 0) {
-      // Agent wants to walk straight to North, South, West or East
-      p1 = std::make_pair(pDesired.first + diffY, pDesired.second + diffX);
-      p2 = std::make_pair(pDesired.first - diffY, pDesired.second - diffX);
-    } else {
-      // Agent wants to walk diagonally
-      p1 = std::make_pair(pDesired.first, agent->getY());
-      p2 = std::make_pair(agent->getX(), pDesired.second);
-    }
-    prioritizedAlternatives.push_back(p1);
-    prioritizedAlternatives.push_back(p2);
+      int diffX = pDesired.first - agent->getX();
+      int diffY = pDesired.second - agent->getY();
+      std::pair<int, int> p1, p2;
+      if (diffX == 0 || diffY == 0) {
+        // Agent wants to walk straight to North, South, West or East
+        p1 = std::make_pair(pDesired.first + diffY, pDesired.second + diffX);
+        p2 = std::make_pair(pDesired.first - diffY, pDesired.second - diffX);
+      } else {
+        // Agent wants to walk diagonally
+        p1 = std::make_pair(pDesired.first, agent->getY());
+        p2 = std::make_pair(agent->getX(), pDesired.second);
+      }
+      prioritizedAlternatives.push_back(p1);
+      prioritizedAlternatives.push_back(p2);
 
-    // Find the first empty alternative position
-    for (std::vector<pair<int, int>>::iterator it =
-             prioritizedAlternatives.begin();
-         it != prioritizedAlternatives.end(); ++it) {
+      // Find the first empty alternative position
+      for (std::vector<pair<int, int>>::iterator it =
+               prioritizedAlternatives.begin();
+           it != prioritizedAlternatives.end(); ++it) {
 
-      // If the current position is not yet taken by any neighbor
-      if (std::find(takenPositions.begin(), takenPositions.end(), *it) ==
-          takenPositions.end()) {
+        // If the current position is not yet taken by any neighbor
+        if (std::find(takenPositions.begin(), takenPositions.end(), *it) ==
+            takenPositions.end()) {
 
-        // Set the agent's position
-        agent->setX((*it).first);
-        agent->setY((*it).second);
+          // Set the agent's position
+          agent->setX((*it).first);
+          agent->setY((*it).second);
 
-        break;
+          break;
+        }
       }
     }
   }
