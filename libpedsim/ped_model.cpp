@@ -13,6 +13,7 @@
 #include <cuda_runtime.h>
 #include <immintrin.h>
 #include <iostream>
+#include <mutex>
 #include <omp.h>
 #include <pthread.h>
 #include <stack>
@@ -148,10 +149,9 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
     }
   }
 
-  for (int x = 0; x < 160; ++x) {
-    for (int y = 0; y < 120; ++y) {
-      agent_grid[x][y] = nullptr;
-    }
+  regionMutexes.clear();
+  for (int i = 0; i < numRegions; ++i) {
+    regionMutexes.emplace_back(std::make_unique<std::mutex>());
   }
 
   this->numRegions = 4;
@@ -175,12 +175,6 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
 
       idx++;
     }
-  }
-
-  for (auto agent : agents) {
-    int x = agent->getX();
-    int y = agent->getY();
-    agent_grid[x][y] = agent;
   }
 
   // Set up heatmap (relevant for Assignment 4)
@@ -424,13 +418,19 @@ void Ped::Model::tick() {
 // Moves the agent to the next desired position. If already taken, it will
 // be moved to a location close to it.
 void Ped::Model::move(Ped::Model::Region *region) {
-  // Search for neighboring agents
-  // set<const Ped::Tagent *> neighbors =
-  // getNeighbors(agent->getX(), agent->getY(), 2);
+  std::unique_lock<std::mutex> regionLock(*regionMutexes[region->id]);
 
-  std::vector<Ped::Tagent *> agentsToMove = region->agentsInRegion;
-
-  for (Ped::Tagent *agent : agentsToMove) {
+  auto agentIt = region->agentsInRegion.begin();
+  while (agentIt != region->agentsInRegion.end()) {
+    Ped::Tagent *agent = *agentIt;
+    // Retrieve their positions
+    std::vector<std::pair<int, int>> takenPositions;
+    for (Ped::Tagent *neighbor : region->agentsInRegion) {
+      if (agent == neighbor)
+        continue;
+      std::pair<int, int> position(neighbor->getX(), neighbor->getY());
+      takenPositions.push_back(position);
+    }
 
     // Compute the three alternative positions that would bring the agent
     // closer to his desiredPosition, starting with the desiredPosition itself
@@ -454,93 +454,93 @@ void Ped::Model::move(Ped::Model::Region *region) {
     prioritizedAlternatives.push_back(p2);
 
     // Find the first empty alternative position
-    for (auto &alt : prioritizedAlternatives) {
-      int tx = alt.first;
-      int ty = alt.second;
+    for (std::vector<pair<int, int>>::iterator it =
+             prioritizedAlternatives.begin();
+         it != prioritizedAlternatives.end(); ++it) {
 
-      if (tx < 0 || tx >= 160 || ty < 0 || ty >= 120)
-        continue;
+      // If the current position is not yet taken by any neighbor
+      if (std::find(takenPositions.begin(), takenPositions.end(), *it) ==
+          takenPositions.end()) {
 
-      unique_lock<mutex> cellock(this->cell_locks[tx][ty]);
+        // Set the agent's position
+        agent->setX((*it).first);
+        agent->setY((*it).second);
 
-      if (this->agent_grid[tx][ty] == nullptr) {
-        this->agent_grid[agent->getX()][agent->getY()] = nullptr;
-        this->agent_grid[tx][ty] = agent;
-        agent->setX(tx);
-        agent->setY(ty);
+        int newRegion = find_region(agent);
+        if (newRegion != region->id) {
+          regionLock.unlock();
+          std::lock(regionMutexes[region->id], regionMutexes[newRegion]);
 
-        cellock.unlock();
+          std::lock_guard<std::mutex> l1(regionMutexes[region->id],
+                                         std::adopt_lock);
+          std::lock_guard<std::mutex> l2(regionMutexes[newRegion],
+                                         std::adopt_lock);
 
-        int newRegionId = find_region(agent);
-        if (newRegionId != region->id) {
-          lock_guard<mutex> lockFrom(region->mutex);
-          lock_guard<mutex> lockTo(this->regions[newRegionId].mutex);
-          auto it = find(region->agentsInRegion.begin(),
-                         region->agentsInRegion.end(), agent);
-          if (it != region->agentsInRegion.end()) {
-            region->agentsInRegion.erase(it);
-            this->regions[newRegionId].agentsInRegion.push_back(agent);
-          }
-        }
+          agentIt = region->agentsInRegion.erase(agentIt);
+          regions[newRegion].agentsInRegion.push_back(agent);
+
+          regionLock = std::unique_lock<mutex>(regionMutexes, std::adopt_lock);
+        } else
+          agentIt++;
+
         break;
       }
     }
   }
-}
 
-/// Returns the list of neighbors within dist of the point x/y. This
-/// can be the position of an agent, but it is not limited to this.
-/// \date    2012-01-29
-/// \return  The list of neighbors
-/// \param   x the x coordinate
-/// \param   y the y coordinate
-/// \param   dist the distance around x/y that will be searched for agents
-/// (search field is a square in the current implementation)
-set<const Ped::Tagent *> Ped::Model::getNeighbors(int x, int y,
-                                                  int dist) const {
+  /// Returns the list of neighbors within dist of the point x/y. This
+  /// can be the position of an agent, but it is not limited to this.
+  /// \date    2012-01-29
+  /// \return  The list of neighbors
+  /// \param   x the x coordinate
+  /// \param   y the y coordinate
+  /// \param   dist the distance around x/y that will be searched for agents
+  /// (search field is a square in the current implementation)
+  set<const Ped::Tagent *> Ped::Model::getNeighbors(int x, int y, int dist)
+      const {
 
-  // create the output list
-  // ( It would be better to include only the agents close by, but this
-  // programmer is lazy.)
-  return set<const Ped::Tagent *>(agents.begin(), agents.end());
-}
-
-void Ped::Model::cleanup() {
-  // Nothing to do here right now.
-}
-
-Ped::Model::~Model() {
-  if (implementation == Ped::CUDA_FULL) {
-    cudaFree(agentX);
-    cudaFree(agentY);
-    cudaFree(destX);
-    cudaFree(destY);
-    cudaFree(desiredX);
-    cudaFree(desiredY);
-    cudaFree(wpX);
-    cudaFree(wpY);
-    cudaFree(wpR);
-    cudaFree(wpSequences);
-    cudaFree(wpSequencesLen);
-    cudaFree(currentWpIdx);
-  } else if (implementation == Ped::CUDA) {
-    cudaFree(agentX);
-    cudaFree(agentY);
-    cudaFree(destX);
-    cudaFree(destY);
-    cudaFree(desiredX);
-    cudaFree(desiredY);
-  } else {
-    free(agentX);
-    free(agentY);
-    free(destX);
-    free(destY);
-    free(desiredX);
-    free(desiredY);
+    // create the output list
+    // ( It would be better to include only the agents close by, but this
+    // programmer is lazy.)
+    return set<const Ped::Tagent *>(agents.begin(), agents.end());
   }
 
-  std::for_each(agents.begin(), agents.end(),
-                [](Ped::Tagent *agent) { delete agent; });
-  std::for_each(destinations.begin(), destinations.end(),
-                [](Ped::Twaypoint *destination) { delete destination; });
-}
+  void Ped::Model::cleanup() {
+    // Nothing to do here right now.
+  }
+
+  Ped::Model::~Model() {
+    if (implementation == Ped::CUDA_FULL) {
+      cudaFree(agentX);
+      cudaFree(agentY);
+      cudaFree(destX);
+      cudaFree(destY);
+      cudaFree(desiredX);
+      cudaFree(desiredY);
+      cudaFree(wpX);
+      cudaFree(wpY);
+      cudaFree(wpR);
+      cudaFree(wpSequences);
+      cudaFree(wpSequencesLen);
+      cudaFree(currentWpIdx);
+    } else if (implementation == Ped::CUDA) {
+      cudaFree(agentX);
+      cudaFree(agentY);
+      cudaFree(destX);
+      cudaFree(destY);
+      cudaFree(desiredX);
+      cudaFree(desiredY);
+    } else {
+      free(agentX);
+      free(agentY);
+      free(destX);
+      free(destY);
+      free(desiredX);
+      free(desiredY);
+    }
+
+    std::for_each(agents.begin(), agents.end(),
+                  [](Ped::Tagent *agent) { delete agent; });
+    std::for_each(destinations.begin(), destinations.end(),
+                  [](Ped::Twaypoint *destination) { delete destination; });
+  }
