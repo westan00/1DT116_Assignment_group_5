@@ -242,250 +242,204 @@ void Ped::Model::tick() {
 #pragma omp parallel for default(none) shared(agents)
     for (int i = 0; i < agents.size(); ++i) {
       agents[i]->computeNextDesiredPosition();
-#pragma omp critical {
+#pragma omp critical
       move(agents[i]);
     }
-  } break;
+    break;
   }
-case Ped::PTHREAD: {
-  static bool initialized = false;
+  case Ped::PTHREAD: {
+    static bool initialized = false;
 
-  if (!initialized) {
-    char *env = getenv("PTHREAD_NUM_THREADS");
-    bd.num_threads = env ? atoi(env) : 8;
-    cout << "Number of threads: " << bd.num_threads;
-    cout << "\n";
-    bd.model = this;
-    bd.running = true;
+    if (!initialized) {
+      char *env = getenv("PTHREAD_NUM_THREADS");
+      bd.num_threads = env ? atoi(env) : 8;
+      cout << "Number of threads: " << bd.num_threads;
+      cout << "\n";
+      bd.model = this;
+      bd.running = true;
 
-    pthread_barrier_init(&bd.start_barrier, NULL, bd.num_threads + 1);
-    pthread_barrier_init(&bd.done_barrier, NULL, bd.num_threads + 1);
+      pthread_barrier_init(&bd.start_barrier, NULL, bd.num_threads + 1);
+      pthread_barrier_init(&bd.done_barrier, NULL, bd.num_threads + 1);
 
-    pthread_t t;
-    for (long i = 0; i < bd.num_threads; i++) {
-      pthread_create(&t, NULL, barrier_worker, (void *)i);
+      pthread_t t;
+      for (long i = 0; i < bd.num_threads; i++) {
+        pthread_create(&t, NULL, barrier_worker, (void *)i);
+      }
+      initialized = true;
     }
-    initialized = true;
+
+    pthread_barrier_wait(&bd.start_barrier);
+    pthread_barrier_wait(&bd.done_barrier);
+
+    break;
   }
+  case Ped::VECTOR: {
+    for (int i = 0; i < num_agents; ++i) {
+      agents[i]->updateWaypoint();
+    }
+    for (int i = 0; i < n_padded; i += 16) {
+      __m512 ax = _mm512_load_ps(&agentX[i]);
+      __m512 ay = _mm512_load_ps(&agentY[i]);
+      __m512 dx = _mm512_load_ps(&destX[i]);
+      __m512 dy = _mm512_load_ps(&destY[i]);
 
-  pthread_barrier_wait(&bd.start_barrier);
-  pthread_barrier_wait(&bd.done_barrier);
+      __m512 diffX = _mm512_sub_ps(dx, ax);
+      __m512 diffY = _mm512_sub_ps(dy, ay);
 
-  break;
-}
-case Ped::VECTOR: {
-  for (int i = 0; i < num_agents; ++i) {
-    agents[i]->updateWaypoint();
+      __m512 lenSq = _mm512_add_ps(_mm512_mul_ps(diffX, diffX),
+                                   _mm512_mul_ps(diffY, diffY));
+      __m512 len = _mm512_sqrt_ps(lenSq);
+
+      __m512 zero = _mm512_setzero_ps();
+      __mmask16 mask = _mm512_cmp_ps_mask(len, zero, _CMP_GT_OQ);
+
+      __m512 stepX = _mm512_maskz_div_ps(mask, diffX, len);
+      __m512 stepY = _mm512_maskz_div_ps(mask, diffY, len);
+
+      __m512 desX =
+          _mm512_roundscale_ps(_mm512_add_ps(ax, stepX),
+                               _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
+      __m512 desY =
+          _mm512_roundscale_ps(_mm512_add_ps(ay, stepY),
+                               _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
+
+      _mm512_store_ps(&desiredX[i], desX);
+      _mm512_store_ps(&desiredY[i], desY);
+    }
+    for (Ped::Tagent *agent : agents) {
+      move(agent);
+    }
+
+    break;
   }
-  for (int i = 0; i < n_padded; i += 16) {
-    __m512 ax = _mm512_load_ps(&agentX[i]);
-    __m512 ay = _mm512_load_ps(&agentY[i]);
-    __m512 dx = _mm512_load_ps(&destX[i]);
-    __m512 dy = _mm512_load_ps(&destY[i]);
-
-    __m512 diffX = _mm512_sub_ps(dx, ax);
-    __m512 diffY = _mm512_sub_ps(dy, ay);
-
-    __m512 lenSq =
-        _mm512_add_ps(_mm512_mul_ps(diffX, diffX), _mm512_mul_ps(diffY, diffY));
-    __m512 len = _mm512_sqrt_ps(lenSq);
-
-    __m512 zero = _mm512_setzero_ps();
-    __mmask16 mask = _mm512_cmp_ps_mask(len, zero, _CMP_GT_OQ);
-
-    __m512 stepX = _mm512_maskz_div_ps(mask, diffX, len);
-    __m512 stepY = _mm512_maskz_div_ps(mask, diffY, len);
-
-    __m512 desX =
-        _mm512_roundscale_ps(_mm512_add_ps(ax, stepX),
-                             _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
-    __m512 desY =
-        _mm512_roundscale_ps(_mm512_add_ps(ay, stepY),
-                             _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
-
-    _mm512_store_ps(&desiredX[i], desX);
-    _mm512_store_ps(&desiredY[i], desY);
-  }
-  for (Ped::Tagent *agent : agents) {
-    move(agent);
-  }
-
-  break;
-}
-case Ped::VECTOR_OMP: {
+  case Ped::VECTOR_OMP: {
 #pragma omp parallel for
-  for (int i = 0; i < num_agents; ++i) {
-    agents[i]->updateWaypoint();
-  }
-  // Parallelized Vectorized calculation (OMP + AVX-512)
+    for (int i = 0; i < num_agents; ++i) {
+      agents[i]->updateWaypoint();
+    }
+    // Parallelized Vectorized calculation (OMP + AVX-512)
 #pragma omp parallel for
-  for (int i = 0; i < n_padded; i += 16) {
-    __m512 ax = _mm512_load_ps(&agentX[i]);
-    __m512 ay = _mm512_load_ps(&agentY[i]);
-    __m512 dx = _mm512_load_ps(&destX[i]);
-    __m512 dy = _mm512_load_ps(&destY[i]);
+    for (int i = 0; i < n_padded; i += 16) {
+      __m512 ax = _mm512_load_ps(&agentX[i]);
+      __m512 ay = _mm512_load_ps(&agentY[i]);
+      __m512 dx = _mm512_load_ps(&destX[i]);
+      __m512 dy = _mm512_load_ps(&destY[i]);
 
-    __m512 diffX = _mm512_sub_ps(dx, ax);
-    __m512 diffY = _mm512_sub_ps(dy, ay);
+      __m512 diffX = _mm512_sub_ps(dx, ax);
+      __m512 diffY = _mm512_sub_ps(dy, ay);
 
-    __m512 lenSq =
-        _mm512_add_ps(_mm512_mul_ps(diffX, diffX), _mm512_mul_ps(diffY, diffY));
-    __m512 len = _mm512_sqrt_ps(lenSq);
+      __m512 lenSq = _mm512_add_ps(_mm512_mul_ps(diffX, diffX),
+                                   _mm512_mul_ps(diffY, diffY));
+      __m512 len = _mm512_sqrt_ps(lenSq);
 
-    __m512 zero = _mm512_setzero_ps();
-    __mmask16 mask = _mm512_cmp_ps_mask(len, zero, _CMP_GT_OQ);
+      __m512 zero = _mm512_setzero_ps();
+      __mmask16 mask = _mm512_cmp_ps_mask(len, zero, _CMP_GT_OQ);
 
-    __m512 stepX = _mm512_maskz_div_ps(mask, diffX, len);
-    __m512 stepY = _mm512_maskz_div_ps(mask, diffY, len);
+      __m512 stepX = _mm512_maskz_div_ps(mask, diffX, len);
+      __m512 stepY = _mm512_maskz_div_ps(mask, diffY, len);
 
-    __m512 desX =
-        _mm512_roundscale_ps(_mm512_add_ps(ax, stepX),
-                             _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
-    __m512 desY =
-        _mm512_roundscale_ps(_mm512_add_ps(ay, stepY),
-                             _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
+      __m512 desX =
+          _mm512_roundscale_ps(_mm512_add_ps(ax, stepX),
+                               _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
+      __m512 desY =
+          _mm512_roundscale_ps(_mm512_add_ps(ay, stepY),
+                               _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
 
-    _mm512_store_ps(&desiredX[i], desX);
-    _mm512_store_ps(&desiredY[i], desY);
+      _mm512_store_ps(&desiredX[i], desX);
+      _mm512_store_ps(&desiredY[i], desY);
+    }
+    for (Ped::Tagent *agent : agents) {
+      move(agent);
+    }
+    break;
   }
-  for (Ped::Tagent *agent : agents) {
-    move(agent);
-  }
-  break;
-}
-case Ped::CUDA: {
+  case Ped::CUDA: {
 #pragma omp parallel for
-  for (int i = 0; i < num_agents; ++i) {
-    agents[i]->updateWaypoint();
+    for (int i = 0; i < num_agents; ++i) {
+      agents[i]->updateWaypoint();
+    }
+    launch_cuda_tick(agentX, destX, destY, desiredX, desiredY, num_agents);
+    for (Ped::Tagent *agent : agents) {
+      move(agent);
+    }
+    if (cuda_sync) {
+      cudaDeviceSynchronize();
+    }
+    break;
   }
-  launch_cuda_tick(agentX, destX, destY, desiredX, desiredY, num_agents);
-  for (Ped::Tagent *agent : agents) {
-    move(agent);
-  }
-  if (cuda_sync) {
-    cudaDeviceSynchronize();
-  }
-  break;
-}
-case Ped::CUDA_FULL: {
-  launch_cuda_tick_full(agentX, agentY, desiredX, desiredY, currentWpIdx,
-                        wpSequences, wpSequencesLen, wpX, wpY, wpR,
-                        maxWpsPerAgent, num_agents);
+  case Ped::CUDA_FULL: {
+    launch_cuda_tick_full(agentX, agentY, desiredX, desiredY, currentWpIdx,
+                          wpSequences, wpSequencesLen, wpX, wpY, wpR,
+                          maxWpsPerAgent, num_agents);
 
-  for (Ped::Tagent *agent : agents) {
-    move(agent);
+    for (Ped::Tagent *agent : agents) {
+      move(agent);
+    }
+    if (cuda_sync) {
+      cudaDeviceSynchronize();
+    }
+    break;
   }
-  if (cuda_sync) {
-    cudaDeviceSynchronize();
+  case Ped::SEQ_REGION: {
+    for (auto &region : regions) {
+      region.agentsInRegion.clear();
+    }
+    for (Ped::Tagent *agent : agents) {
+      agent->computeNextDesiredPosition();
+      int regionId = find_region(agent->getX(), agent->getY());
+      regions[regionId].agentsInRegion.push_back(agent);
+    }
+    for (auto &region : regions) {
+      move(&region);
+    }
+    break;
   }
-  break;
-}
-case Ped::SEQ_REGION: {
-  for (auto &region : regions) {
-    region.agentsInRegion.clear();
-  }
-  for (Ped::Tagent *agent : agents) {
-    agent->computeNextDesiredPosition();
-    int regionId = find_region(agent->getX(), agent->getY());
-    regions[regionId].agentsInRegion.push_back(agent);
-  }
-  for (auto &region : regions) {
-    move(&region);
-  }
-  break;
-}
-case Ped::OMP_REGION: {
-  for (auto &region : regions) {
-    region.agentsInRegion.clear();
-  }
+  case Ped::OMP_REGION: {
+    for (auto &region : regions) {
+      region.agentsInRegion.clear();
+    }
 #pragma omp parallel for default(none) shared(agents, regions, regionMutexes)
-  for (int i = 0; i < agents.size(); ++i) {
-    agents[i]->computeNextDesiredPosition();
-    int regionId = find_region(agents[i]->getX(), agents[i]->getY());
-    std::lock_guard<std::mutex> lock(*regionMutexes[regionId]);
-    regions[regionId].agentsInRegion.push_back(agents[i]);
-  }
+    for (int i = 0; i < agents.size(); ++i) {
+      agents[i]->computeNextDesiredPosition();
+      int regionId = find_region(agents[i]->getX(), agents[i]->getY());
+      std::lock_guard<std::mutex> lock(*regionMutexes[regionId]);
+      regions[regionId].agentsInRegion.push_back(agents[i]);
+    }
 #pragma omp parallel for default(none) shared(regions, numRegions)
-  for (int i = 0; i < numRegions; ++i) {
-    move(&regions[i]);
+    for (int i = 0; i < numRegions; ++i) {
+      move(&regions[i]);
+    }
+    break;
   }
-  break;
-}
-default: {
-  for (Ped::Tagent *agent : agents) {
-    agent->computeNextDesiredPosition();
-    move(agent);
-  }
-}
-}
-
-////////////
-/// Everything below here relevant for Assignment 3.
-/// Don't use this for Assignment 1!
-///////////////////////////////////////////////
-
-// Moves the agent to the next desired position. If already taken, it will
-// be moved to a location close to it.
-
-void Ped::Model::move(Ped::Tagent *agent) {
-  // Search for neighboring agents
-  set<const Ped::Tagent *> neighbors =
-      getNeighbors(agent->getX(), agent->getY(), 2);
-
-  // Retrieve their positions
-  std::vector<std::pair<int, int>> takenPositions;
-  for (std::set<const Ped::Tagent *>::iterator neighborIt = neighbors.begin();
-       neighborIt != neighbors.end(); ++neighborIt) {
-    std::pair<int, int> position((*neighborIt)->getX(), (*neighborIt)->getY());
-    takenPositions.push_back(position);
-  }
-
-  // Compute the three alternative positions that would bring the agent
-  // closer to his desiredPosition, starting with the desiredPosition itself
-  std::vector<std::pair<int, int>> prioritizedAlternatives;
-  std::pair<int, int> pDesired(agent->getDesiredX(), agent->getDesiredY());
-  prioritizedAlternatives.push_back(pDesired);
-
-  int diffX = pDesired.first - agent->getX();
-  int diffY = pDesired.second - agent->getY();
-  std::pair<int, int> p1, p2;
-  if (diffX == 0 || diffY == 0) {
-    // Agent wants to walk straight to North, South, West or East
-    p1 = std::make_pair(pDesired.first + diffY, pDesired.second + diffX);
-    p2 = std::make_pair(pDesired.first - diffY, pDesired.second - diffX);
-  } else {
-    // Agent wants to walk diagonally
-    p1 = std::make_pair(pDesired.first, agent->getY());
-    p2 = std::make_pair(agent->getX(), pDesired.second);
-  }
-  prioritizedAlternatives.push_back(p1);
-  prioritizedAlternatives.push_back(p2);
-
-  // Find the first empty alternative position
-  for (std::vector<pair<int, int>>::iterator it =
-           prioritizedAlternatives.begin();
-       it != prioritizedAlternatives.end(); ++it) {
-
-    // If the current position is not yet taken by any neighbor
-    if (std::find(takenPositions.begin(), takenPositions.end(), *it) ==
-        takenPositions.end()) {
-
-      // Set the agent's position
-      agent->setX((*it).first);
-      agent->setY((*it).second);
-
-      break;
+  default: {
+    for (Ped::Tagent *agent : agents) {
+      agent->computeNextDesiredPosition();
+      move(agent);
     }
   }
-}
+  }
 
-void Ped::Model::move(Ped::Model::Region *region) {
-  std::unique_lock<std::mutex> regionLock(*regionMutexes[region->id]);
+  ////////////
+  /// Everything below here relevant for Assignment 3.
+  /// Don't use this for Assignment 1!
+  ///////////////////////////////////////////////
 
-  auto agentIt = region->agentsInRegion.begin();
-  while (agentIt != region->agentsInRegion.end()) {
-    Ped::Tagent *agent = *agentIt;
-    bool moved = false;
+  // Moves the agent to the next desired position. If already taken, it will
+  // be moved to a location close to it.
+
+  void Ped::Model::move(Ped::Tagent * agent) {
+    // Search for neighboring agents
+    set<const Ped::Tagent *> neighbors =
+        getNeighbors(agent->getX(), agent->getY(), 2);
+
+    // Retrieve their positions
+    std::vector<std::pair<int, int>> takenPositions;
+    for (std::set<const Ped::Tagent *>::iterator neighborIt = neighbors.begin();
+         neighborIt != neighbors.end(); ++neighborIt) {
+      std::pair<int, int> position((*neighborIt)->getX(),
+                                   (*neighborIt)->getY());
+      takenPositions.push_back(position);
+    }
 
     // Compute the three alternative positions that would bring the agent
     // closer to his desiredPosition, starting with the desiredPosition itself
@@ -509,125 +463,172 @@ void Ped::Model::move(Ped::Model::Region *region) {
     prioritizedAlternatives.push_back(p2);
 
     // Find the first empty alternative position
-    for (auto const &alt : prioritizedAlternatives) {
-      int newRegionId = find_region(alt.first, alt.second);
+    for (std::vector<pair<int, int>>::iterator it =
+             prioritizedAlternatives.begin();
+         it != prioritizedAlternatives.end(); ++it) {
 
-      if (newRegionId == region->id) {
-        // Staying in same region
-        bool taken = false;
-        for (auto neighbor : region->agentsInRegion) {
-          if (agent != neighbor && neighbor->getX() == alt.first &&
-              neighbor->getY() == alt.second) {
-            taken = true;
-            break;
-          }
-        }
-        if (!taken) {
-          agent->setX(alt.first);
-          agent->setY(alt.second);
-          moved = true;
-          ++agentIt;
-          break;
-        }
+      // If the current position is not yet taken by any neighbor
+      if (std::find(takenPositions.begin(), takenPositions.end(), *it) ==
+          takenPositions.end()) {
+
+        // Set the agent's position
+        agent->setX((*it).first);
+        agent->setY((*it).second);
+
+        break;
+      }
+    }
+  }
+
+  void Ped::Model::move(Ped::Model::Region * region) {
+    std::unique_lock<std::mutex> regionLock(*regionMutexes[region->id]);
+
+    auto agentIt = region->agentsInRegion.begin();
+    while (agentIt != region->agentsInRegion.end()) {
+      Ped::Tagent *agent = *agentIt;
+      bool moved = false;
+
+      // Compute the three alternative positions that would bring the agent
+      // closer to his desiredPosition, starting with the desiredPosition itself
+      std::vector<std::pair<int, int>> prioritizedAlternatives;
+      std::pair<int, int> pDesired(agent->getDesiredX(), agent->getDesiredY());
+      prioritizedAlternatives.push_back(pDesired);
+
+      int diffX = pDesired.first - agent->getX();
+      int diffY = pDesired.second - agent->getY();
+      std::pair<int, int> p1, p2;
+      if (diffX == 0 || diffY == 0) {
+        // Agent wants to walk straight to North, South, West or East
+        p1 = std::make_pair(pDesired.first + diffY, pDesired.second + diffX);
+        p2 = std::make_pair(pDesired.first - diffY, pDesired.second - diffX);
       } else {
-        // Crossing to new region
-        regionLock.unlock();
-        std::lock(*regionMutexes[region->id], *regionMutexes[newRegionId]);
-        std::unique_lock<std::mutex> targetLock(*regionMutexes[newRegionId],
-                                                std::adopt_lock);
-        regionLock = std::unique_lock<std::mutex>(*regionMutexes[region->id],
-                                                  std::adopt_lock);
+        // Agent wants to walk diagonally
+        p1 = std::make_pair(pDesired.first, agent->getY());
+        p2 = std::make_pair(agent->getX(), pDesired.second);
+      }
+      prioritizedAlternatives.push_back(p1);
+      prioritizedAlternatives.push_back(p2);
 
-        bool taken = false;
-        for (auto neighbor : region->agentsInRegion) {
-          if (agent != neighbor && neighbor->getX() == alt.first &&
-              neighbor->getY() == alt.second) {
-            taken = true;
-            break;
-          }
-        }
-        if (!taken) {
-          for (auto neighbor : regions[newRegionId].agentsInRegion) {
-            if (neighbor->getX() == alt.first &&
+      // Find the first empty alternative position
+      for (auto const &alt : prioritizedAlternatives) {
+        int newRegionId = find_region(alt.first, alt.second);
+
+        if (newRegionId == region->id) {
+          // Staying in same region
+          bool taken = false;
+          for (auto neighbor : region->agentsInRegion) {
+            if (agent != neighbor && neighbor->getX() == alt.first &&
                 neighbor->getY() == alt.second) {
               taken = true;
               break;
             }
           }
-        }
+          if (!taken) {
+            agent->setX(alt.first);
+            agent->setY(alt.second);
+            moved = true;
+            ++agentIt;
+            break;
+          }
+        } else {
+          // Crossing to new region
+          regionLock.unlock();
+          std::lock(*regionMutexes[region->id], *regionMutexes[newRegionId]);
+          std::unique_lock<std::mutex> targetLock(*regionMutexes[newRegionId],
+                                                  std::adopt_lock);
+          regionLock = std::unique_lock<std::mutex>(*regionMutexes[region->id],
+                                                    std::adopt_lock);
 
-        if (!taken) {
-          agent->setX(alt.first);
-          agent->setY(alt.second);
-          agentIt = region->agentsInRegion.erase(agentIt);
-          regions[newRegionId].agentsInRegion.push_back(agent);
-          moved = true;
-          break; // targetLock released, regionLock kept
+          bool taken = false;
+          for (auto neighbor : region->agentsInRegion) {
+            if (agent != neighbor && neighbor->getX() == alt.first &&
+                neighbor->getY() == alt.second) {
+              taken = true;
+              break;
+            }
+          }
+          if (!taken) {
+            for (auto neighbor : regions[newRegionId].agentsInRegion) {
+              if (neighbor->getX() == alt.first &&
+                  neighbor->getY() == alt.second) {
+                taken = true;
+                break;
+              }
+            }
+          }
+
+          if (!taken) {
+            agent->setX(alt.first);
+            agent->setY(alt.second);
+            agentIt = region->agentsInRegion.erase(agentIt);
+            regions[newRegionId].agentsInRegion.push_back(agent);
+            moved = true;
+            break; // targetLock released, regionLock kept
+          }
+          // If taken, just fall through to next alternative with both locks
+          // re-acquired (targetLock will release when it goes out of scope)
         }
-        // If taken, just fall through to next alternative with both locks
-        // re-acquired (targetLock will release when it goes out of scope)
+      }
+
+      if (!moved) {
+        ++agentIt;
       }
     }
+  }
 
-    if (!moved) {
-      ++agentIt;
+  /// Returns the list of neighbors within dist of the point x/y. This
+  /// can be the position of an agent, but it is not limited to this.
+  /// \date    2012-01-29
+  /// \return  The list of neighbors
+  /// \param   x the x coordinate
+  /// \param   y the y coordinate
+  /// \param   dist the distance around x/y that will be searched for agents
+  /// (search field is a square in the current implementation)
+  set<const Ped::Tagent *> Ped::Model::getNeighbors(int x, int y, int dist)
+      const {
+
+    // create the output list
+    // ( It would be better to include only the agents close by, but this
+    // programmer is lazy.)
+    return set<const Ped::Tagent *>(agents.begin(), agents.end());
+  }
+
+  void Ped::Model::cleanup() {
+    // Nothing to do here right now.
+  }
+
+  Ped::Model::~Model() {
+    if (implementation == Ped::CUDA_FULL) {
+      cudaFree(agentX);
+      cudaFree(agentY);
+      cudaFree(destX);
+      cudaFree(destY);
+      cudaFree(desiredX);
+      cudaFree(desiredY);
+      cudaFree(wpX);
+      cudaFree(wpY);
+      cudaFree(wpR);
+      cudaFree(wpSequences);
+      cudaFree(wpSequencesLen);
+      cudaFree(currentWpIdx);
+    } else if (implementation == Ped::CUDA) {
+      cudaFree(agentX);
+      cudaFree(agentY);
+      cudaFree(destX);
+      cudaFree(destY);
+      cudaFree(desiredX);
+      cudaFree(desiredY);
+    } else {
+      free(agentX);
+      free(agentY);
+      free(destX);
+      free(destY);
+      free(desiredX);
+      free(desiredY);
     }
+
+    std::for_each(agents.begin(), agents.end(),
+                  [](Ped::Tagent *agent) { delete agent; });
+    std::for_each(destinations.begin(), destinations.end(),
+                  [](Ped::Twaypoint *destination) { delete destination; });
   }
-}
-
-/// Returns the list of neighbors within dist of the point x/y. This
-/// can be the position of an agent, but it is not limited to this.
-/// \date    2012-01-29
-/// \return  The list of neighbors
-/// \param   x the x coordinate
-/// \param   y the y coordinate
-/// \param   dist the distance around x/y that will be searched for agents
-/// (search field is a square in the current implementation)
-set<const Ped::Tagent *> Ped::Model::getNeighbors(int x, int y,
-                                                  int dist) const {
-
-  // create the output list
-  // ( It would be better to include only the agents close by, but this
-  // programmer is lazy.)
-  return set<const Ped::Tagent *>(agents.begin(), agents.end());
-}
-
-void Ped::Model::cleanup() {
-  // Nothing to do here right now.
-}
-
-Ped::Model::~Model() {
-  if (implementation == Ped::CUDA_FULL) {
-    cudaFree(agentX);
-    cudaFree(agentY);
-    cudaFree(destX);
-    cudaFree(destY);
-    cudaFree(desiredX);
-    cudaFree(desiredY);
-    cudaFree(wpX);
-    cudaFree(wpY);
-    cudaFree(wpR);
-    cudaFree(wpSequences);
-    cudaFree(wpSequencesLen);
-    cudaFree(currentWpIdx);
-  } else if (implementation == Ped::CUDA) {
-    cudaFree(agentX);
-    cudaFree(agentY);
-    cudaFree(destX);
-    cudaFree(destY);
-    cudaFree(desiredX);
-    cudaFree(desiredY);
-  } else {
-    free(agentX);
-    free(agentY);
-    free(destX);
-    free(destY);
-    free(desiredX);
-    free(desiredY);
-  }
-
-  std::for_each(agents.begin(), agents.end(),
-                [](Ped::Tagent *agent) { delete agent; });
-  std::for_each(destinations.begin(), destinations.end(),
-                [](Ped::Twaypoint *destination) { delete destination; });
-}
