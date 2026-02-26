@@ -242,176 +242,177 @@ void Ped::Model::tick() {
 #pragma omp parallel for default(none) shared(agents)
     for (int i = 0; i < agents.size(); ++i) {
       agents[i]->computeNextDesiredPosition();
+#pragma omp critical {
       move(agents[i]);
     }
-    break;
+  } break;
   }
-  case Ped::PTHREAD: {
-    static bool initialized = false;
+case Ped::PTHREAD: {
+  static bool initialized = false;
 
-    if (!initialized) {
-      char *env = getenv("PTHREAD_NUM_THREADS");
-      bd.num_threads = env ? atoi(env) : 8;
-      cout << "Number of threads: " << bd.num_threads;
-      cout << "\n";
-      bd.model = this;
-      bd.running = true;
+  if (!initialized) {
+    char *env = getenv("PTHREAD_NUM_THREADS");
+    bd.num_threads = env ? atoi(env) : 8;
+    cout << "Number of threads: " << bd.num_threads;
+    cout << "\n";
+    bd.model = this;
+    bd.running = true;
 
-      pthread_barrier_init(&bd.start_barrier, NULL, bd.num_threads + 1);
-      pthread_barrier_init(&bd.done_barrier, NULL, bd.num_threads + 1);
+    pthread_barrier_init(&bd.start_barrier, NULL, bd.num_threads + 1);
+    pthread_barrier_init(&bd.done_barrier, NULL, bd.num_threads + 1);
 
-      pthread_t t;
-      for (long i = 0; i < bd.num_threads; i++) {
-        pthread_create(&t, NULL, barrier_worker, (void *)i);
-      }
-      initialized = true;
+    pthread_t t;
+    for (long i = 0; i < bd.num_threads; i++) {
+      pthread_create(&t, NULL, barrier_worker, (void *)i);
     }
-
-    pthread_barrier_wait(&bd.start_barrier);
-    pthread_barrier_wait(&bd.done_barrier);
-
-    break;
+    initialized = true;
   }
-  case Ped::VECTOR: {
-    for (int i = 0; i < num_agents; ++i) {
-      agents[i]->updateWaypoint();
-    }
-    for (int i = 0; i < n_padded; i += 16) {
-      __m512 ax = _mm512_load_ps(&agentX[i]);
-      __m512 ay = _mm512_load_ps(&agentY[i]);
-      __m512 dx = _mm512_load_ps(&destX[i]);
-      __m512 dy = _mm512_load_ps(&destY[i]);
 
-      __m512 diffX = _mm512_sub_ps(dx, ax);
-      __m512 diffY = _mm512_sub_ps(dy, ay);
+  pthread_barrier_wait(&bd.start_barrier);
+  pthread_barrier_wait(&bd.done_barrier);
 
-      __m512 lenSq = _mm512_add_ps(_mm512_mul_ps(diffX, diffX),
-                                   _mm512_mul_ps(diffY, diffY));
-      __m512 len = _mm512_sqrt_ps(lenSq);
-
-      __m512 zero = _mm512_setzero_ps();
-      __mmask16 mask = _mm512_cmp_ps_mask(len, zero, _CMP_GT_OQ);
-
-      __m512 stepX = _mm512_maskz_div_ps(mask, diffX, len);
-      __m512 stepY = _mm512_maskz_div_ps(mask, diffY, len);
-
-      __m512 desX =
-          _mm512_roundscale_ps(_mm512_add_ps(ax, stepX),
-                               _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
-      __m512 desY =
-          _mm512_roundscale_ps(_mm512_add_ps(ay, stepY),
-                               _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
-
-      _mm512_store_ps(&desiredX[i], desX);
-      _mm512_store_ps(&desiredY[i], desY);
-    }
-    for (Ped::Tagent *agent : agents) {
-      move(agent);
-    }
-
-    break;
+  break;
+}
+case Ped::VECTOR: {
+  for (int i = 0; i < num_agents; ++i) {
+    agents[i]->updateWaypoint();
   }
-  case Ped::VECTOR_OMP: {
+  for (int i = 0; i < n_padded; i += 16) {
+    __m512 ax = _mm512_load_ps(&agentX[i]);
+    __m512 ay = _mm512_load_ps(&agentY[i]);
+    __m512 dx = _mm512_load_ps(&destX[i]);
+    __m512 dy = _mm512_load_ps(&destY[i]);
+
+    __m512 diffX = _mm512_sub_ps(dx, ax);
+    __m512 diffY = _mm512_sub_ps(dy, ay);
+
+    __m512 lenSq =
+        _mm512_add_ps(_mm512_mul_ps(diffX, diffX), _mm512_mul_ps(diffY, diffY));
+    __m512 len = _mm512_sqrt_ps(lenSq);
+
+    __m512 zero = _mm512_setzero_ps();
+    __mmask16 mask = _mm512_cmp_ps_mask(len, zero, _CMP_GT_OQ);
+
+    __m512 stepX = _mm512_maskz_div_ps(mask, diffX, len);
+    __m512 stepY = _mm512_maskz_div_ps(mask, diffY, len);
+
+    __m512 desX =
+        _mm512_roundscale_ps(_mm512_add_ps(ax, stepX),
+                             _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
+    __m512 desY =
+        _mm512_roundscale_ps(_mm512_add_ps(ay, stepY),
+                             _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
+
+    _mm512_store_ps(&desiredX[i], desX);
+    _mm512_store_ps(&desiredY[i], desY);
+  }
+  for (Ped::Tagent *agent : agents) {
+    move(agent);
+  }
+
+  break;
+}
+case Ped::VECTOR_OMP: {
 #pragma omp parallel for
-    for (int i = 0; i < num_agents; ++i) {
-      agents[i]->updateWaypoint();
-    }
-    // Parallelized Vectorized calculation (OMP + AVX-512)
+  for (int i = 0; i < num_agents; ++i) {
+    agents[i]->updateWaypoint();
+  }
+  // Parallelized Vectorized calculation (OMP + AVX-512)
 #pragma omp parallel for
-    for (int i = 0; i < n_padded; i += 16) {
-      __m512 ax = _mm512_load_ps(&agentX[i]);
-      __m512 ay = _mm512_load_ps(&agentY[i]);
-      __m512 dx = _mm512_load_ps(&destX[i]);
-      __m512 dy = _mm512_load_ps(&destY[i]);
+  for (int i = 0; i < n_padded; i += 16) {
+    __m512 ax = _mm512_load_ps(&agentX[i]);
+    __m512 ay = _mm512_load_ps(&agentY[i]);
+    __m512 dx = _mm512_load_ps(&destX[i]);
+    __m512 dy = _mm512_load_ps(&destY[i]);
 
-      __m512 diffX = _mm512_sub_ps(dx, ax);
-      __m512 diffY = _mm512_sub_ps(dy, ay);
+    __m512 diffX = _mm512_sub_ps(dx, ax);
+    __m512 diffY = _mm512_sub_ps(dy, ay);
 
-      __m512 lenSq = _mm512_add_ps(_mm512_mul_ps(diffX, diffX),
-                                   _mm512_mul_ps(diffY, diffY));
-      __m512 len = _mm512_sqrt_ps(lenSq);
+    __m512 lenSq =
+        _mm512_add_ps(_mm512_mul_ps(diffX, diffX), _mm512_mul_ps(diffY, diffY));
+    __m512 len = _mm512_sqrt_ps(lenSq);
 
-      __m512 zero = _mm512_setzero_ps();
-      __mmask16 mask = _mm512_cmp_ps_mask(len, zero, _CMP_GT_OQ);
+    __m512 zero = _mm512_setzero_ps();
+    __mmask16 mask = _mm512_cmp_ps_mask(len, zero, _CMP_GT_OQ);
 
-      __m512 stepX = _mm512_maskz_div_ps(mask, diffX, len);
-      __m512 stepY = _mm512_maskz_div_ps(mask, diffY, len);
+    __m512 stepX = _mm512_maskz_div_ps(mask, diffX, len);
+    __m512 stepY = _mm512_maskz_div_ps(mask, diffY, len);
 
-      __m512 desX =
-          _mm512_roundscale_ps(_mm512_add_ps(ax, stepX),
-                               _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
-      __m512 desY =
-          _mm512_roundscale_ps(_mm512_add_ps(ay, stepY),
-                               _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
+    __m512 desX =
+        _mm512_roundscale_ps(_mm512_add_ps(ax, stepX),
+                             _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
+    __m512 desY =
+        _mm512_roundscale_ps(_mm512_add_ps(ay, stepY),
+                             _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
 
-      _mm512_store_ps(&desiredX[i], desX);
-      _mm512_store_ps(&desiredY[i], desY);
-    }
-    for (Ped::Tagent *agent : agents) {
-      move(agent);
-    }
-    break;
+    _mm512_store_ps(&desiredX[i], desX);
+    _mm512_store_ps(&desiredY[i], desY);
   }
-  case Ped::CUDA: {
+  for (Ped::Tagent *agent : agents) {
+    move(agent);
+  }
+  break;
+}
+case Ped::CUDA: {
 #pragma omp parallel for
-    for (int i = 0; i < num_agents; ++i) {
-      agents[i]->updateWaypoint();
-    }
-    launch_cuda_tick(agentX, agentX, destX, destY, desiredX, desiredY,
-                     num_agents);
-    if (cuda_sync) {
-      cudaDeviceSynchronize();
-    }
-    break;
+  for (int i = 0; i < num_agents; ++i) {
+    agents[i]->updateWaypoint();
   }
-  case Ped::CUDA_FULL: {
-    launch_cuda_tick_full(agentX, agentY, desiredX, desiredY, currentWpIdx,
-                          wpSequences, wpSequencesLen, wpX, wpY, wpR,
-                          maxWpsPerAgent, num_agents);
+  launch_cuda_tick(agentX, agentX, destX, destY, desiredX, desiredY,
+                   num_agents);
+  if (cuda_sync) {
+    cudaDeviceSynchronize();
+  }
+  break;
+}
+case Ped::CUDA_FULL: {
+  launch_cuda_tick_full(agentX, agentY, desiredX, desiredY, currentWpIdx,
+                        wpSequences, wpSequencesLen, wpX, wpY, wpR,
+                        maxWpsPerAgent, num_agents);
 
-    if (cuda_sync) {
-      cudaDeviceSynchronize();
-    }
-    break;
+  if (cuda_sync) {
+    cudaDeviceSynchronize();
   }
-  case Ped::SEQ_REGION: {
-    for (auto &region : regions) {
-      region.agentsInRegion.clear();
-    }
-    for (Ped::Tagent *agent : agents) {
-      agent->computeNextDesiredPosition();
-      int regionId = find_region(agent->getX(), agent->getY());
-      regions[regionId].agentsInRegion.push_back(agent);
-    }
-    for (auto &region : regions) {
-      move(&region);
-    }
-    break;
+  break;
+}
+case Ped::SEQ_REGION: {
+  for (auto &region : regions) {
+    region.agentsInRegion.clear();
   }
-  case Ped::OMP_REGION: {
-    for (auto &region : regions) {
-      region.agentsInRegion.clear();
-    }
+  for (Ped::Tagent *agent : agents) {
+    agent->computeNextDesiredPosition();
+    int regionId = find_region(agent->getX(), agent->getY());
+    regions[regionId].agentsInRegion.push_back(agent);
+  }
+  for (auto &region : regions) {
+    move(&region);
+  }
+  break;
+}
+case Ped::OMP_REGION: {
+  for (auto &region : regions) {
+    region.agentsInRegion.clear();
+  }
 #pragma omp parallel for default(none) shared(agents, regions, regionMutexes)
-    for (int i = 0; i < agents.size(); ++i) {
-      agents[i]->computeNextDesiredPosition();
-      int regionId = find_region(agents[i]->getX(), agents[i]->getY());
-      std::lock_guard<std::mutex> lock(*regionMutexes[regionId]);
-      regions[regionId].agentsInRegion.push_back(agents[i]);
-    }
+  for (int i = 0; i < agents.size(); ++i) {
+    agents[i]->computeNextDesiredPosition();
+    int regionId = find_region(agents[i]->getX(), agents[i]->getY());
+    std::lock_guard<std::mutex> lock(*regionMutexes[regionId]);
+    regions[regionId].agentsInRegion.push_back(agents[i]);
+  }
 #pragma omp parallel for default(none) shared(regions, numRegions)
-    for (int i = 0; i < numRegions; ++i) {
-      move(&regions[i]);
-    }
-    break;
+  for (int i = 0; i < numRegions; ++i) {
+    move(&regions[i]);
   }
-  default: {
-    for (Ped::Tagent *agent : agents) {
-      agent->computeNextDesiredPosition();
-      move(agent);
-    }
+  break;
+}
+default: {
+  for (Ped::Tagent *agent : agents) {
+    agent->computeNextDesiredPosition();
+    move(agent);
   }
-  }
+}
+}
 }
 
 ////////////
