@@ -392,6 +392,9 @@ void Ped::Model::tick() {
     break;
   }
   case Ped::SEQ_REGION: {
+    for (auto &region : regions) {
+      region.agentsInRegion.clear();
+    }
     for (Ped::Tagent *agent : agents) {
       agent->computeNextDesiredPosition();
       int regionId = find_region(agent->getX(), agent->getY());
@@ -403,6 +406,9 @@ void Ped::Model::tick() {
     break;
   }
   case Ped::OMP_REGION: {
+    for (auto &region : regions) {
+      region.agentsInRegion.clear();
+    }
 #pragma omp parallel for default(none) shared(agents, regions, regionMutexes)
     for (int i = 0; i < agents.size(); ++i) {
       agents[i]->computeNextDesiredPosition();
@@ -492,8 +498,6 @@ void Ped::Model::move(Ped::Model::Region *region) {
     agentsToProcess = region->agentsInRegion;
   }
 
-  std::set<std::pair<int, int>> claimedPositions;
-
   for (Ped::Tagent *agent : agentsToProcess) {
     std::vector<std::pair<int, int>> prioritizedAlternatives;
     std::pair<int, int> pDesired(agent->getDesiredX(), agent->getDesiredY());
@@ -516,9 +520,6 @@ void Ped::Model::move(Ped::Model::Region *region) {
     bool moved = false;
 
     for (auto const &alt : prioritizedAlternatives) {
-      if (claimedPositions.count(alt) > 0) {
-        continue;
-      }
 
       int targetId = find_region(alt.first, alt.second);
       int oldRegionId = find_region(agent->getX(), agent->getY());
@@ -552,14 +553,9 @@ void Ped::Model::move(Ped::Model::Region *region) {
         agent->setY(alt.second);
 
         regions[targetId].agentsInRegion.push_back(agent);
-        claimedPositions.insert(alt);
         moved = true;
         break;
       }
-    }
-
-    if (!moved) {
-      claimedPositions.insert(pCurrent);
     }
   }
 }
