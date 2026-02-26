@@ -498,6 +498,7 @@ void Ped::Model::move(Ped::Model::Region *region) {
     agentsToProcess = region->agentsInRegion;
   }
 
+  // Track positions claimed by agents in this batch
   std::set<std::pair<int, int>> claimedPositions;
 
   for (Ped::Tagent *agent : agentsToProcess) {
@@ -522,46 +523,28 @@ void Ped::Model::move(Ped::Model::Region *region) {
     bool moved = false;
 
     for (auto const &alt : prioritizedAlternatives) {
-      // Fast local check — no lock needed
       if (claimedPositions.count(alt) > 0) {
         continue;
       }
 
+      // Check the target region for occupancy
       int targetId = find_region(alt.first, alt.second);
-      int oldRegionId = find_region(agent->getX(), agent->getY());
-
-      // Ordered locking to prevent deadlock
-      int firstId = std::min(oldRegionId, targetId);
-      int secondId = std::max(oldRegionId, targetId);
-
-      std::unique_lock<std::mutex> lock1(*regionMutexes[firstId]);
-      std::unique_lock<std::mutex> lock2(*regionMutexes[secondId],
-                                         std::defer_lock);
-      if (firstId != secondId) {
-        lock2.lock();
-      }
-
-      // Check occupancy under lock — no TOCTOU possible
       bool taken = false;
-      for (auto neighbor : regions[targetId].agentsInRegion) {
-        if (neighbor == agent)
-          continue;
-        if (neighbor->getX() == alt.first && neighbor->getY() == alt.second) {
-          taken = true;
-          break;
+      {
+        std::lock_guard<std::mutex> targetLock(*regionMutexes[targetId]);
+        for (auto neighbor : regions[targetId].agentsInRegion) {
+          if (neighbor == agent)
+            continue;
+          if (neighbor->getX() == alt.first && neighbor->getY() == alt.second) {
+            taken = true;
+            break;
+          }
         }
       }
 
       if (!taken) {
-        // Remove from old region
-        auto &oldAgents = regions[oldRegionId].agentsInRegion;
-        oldAgents.erase(std::remove(oldAgents.begin(), oldAgents.end(), agent),
-                        oldAgents.end());
-
         agent->setX(alt.first);
         agent->setY(alt.second);
-
-        regions[targetId].agentsInRegion.push_back(agent);
         claimedPositions.insert(alt);
         moved = true;
         break;
