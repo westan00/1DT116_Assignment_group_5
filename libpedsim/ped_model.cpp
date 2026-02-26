@@ -149,31 +149,33 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
     }
   }
 
-  this->numRegions = 4;
-  regionMutexes.clear();
-  for (int i = 0; i < numRegions; ++i) {
-    regionMutexes.emplace_back(std::make_unique<std::mutex>());
-  }
+  if (implementation == SEQ_REGION || implementation == OMP_REGION) {
+    this->numRegions = 4;
+    regionMutexes.clear();
+    for (int i = 0; i < numRegions; ++i) {
+      regionMutexes.emplace_back(std::make_unique<std::mutex>());
+    }
 
-  int len = sqrt(numRegions); // 2
-  regions.clear();
-  regions.resize(numRegions);
-  int idx = 0;
-  for (int i = 0; i < len; ++i) {
-    int x_min = (160 / len) * i;
-    int x_max = (160 / len) * (i + 1);
-    for (int j = 0; j < len; ++j) {
-      int y_min = (120 / len) * j;
-      int y_max = (120 / len) * (j + 1);
+    int len = sqrt(numRegions); // 2
+    regions.clear();
+    regions.resize(numRegions);
+    int idx = 0;
+    for (int i = 0; i < len; ++i) {
+      int x_min = (160 / len) * i;
+      int x_max = (160 / len) * (i + 1);
+      for (int j = 0; j < len; ++j) {
+        int y_min = (120 / len) * j;
+        int y_max = (120 / len) * (j + 1);
 
-      regions[idx].id = idx;
-      regions[idx].x_min = x_min;
-      regions[idx].x_max = x_max;
-      regions[idx].y_min = y_min;
-      regions[idx].y_max = y_max;
-      regions[idx].agentsInRegion.clear();
+        regions[idx].id = idx;
+        regions[idx].x_min = x_min;
+        regions[idx].x_max = x_max;
+        regions[idx].y_min = y_min;
+        regions[idx].y_max = y_max;
+        regions[idx].agentsInRegion.clear();
 
-      idx++;
+        idx++;
+      }
     }
   }
 
@@ -200,9 +202,7 @@ void Ped::Model::tick_thread(const int num_threads, int id) {
 
   for (int i = start; i < end; ++i) {
     agents[i]->computeNextDesiredPosition();
-    int regionId = find_region(agents[i]->getX(), agents[i]->getY());
-    std::lock_guard<std::mutex> lock(*regionMutexes[regionId]);
-    regions[regionId].agentsInRegion.push_back(agents[i]);
+    move(agents[i]);
   }
 }
 
@@ -230,32 +230,19 @@ void *barrier_worker(void *arg) {
 
 void Ped::Model::tick() {
   // EDIT HERE FOR ASSIGNMENT 1
-  for (auto &region : regions) {
-    region.agentsInRegion.clear();
-  }
   switch (this->implementation) {
   case Ped::SEQ: {
     for (Ped::Tagent *agent : agents) {
       agent->computeNextDesiredPosition();
-      int regionId = find_region(agent->getX(), agent->getY());
-      regions[regionId].agentsInRegion.push_back(agent);
-    }
-    for (auto &region : regions) {
-      move(&region);
+      move(agent);
     }
     break;
   }
   case Ped::OMP: {
-#pragma omp parallel for default(none) shared(agents, regions, regionMutexes)
+#pragma omp parallel for default(none) shared(agents)
     for (int i = 0; i < agents.size(); ++i) {
       agents[i]->computeNextDesiredPosition();
-      int regionId = find_region(agents[i]->getX(), agents[i]->getY());
-      std::lock_guard<std::mutex> lock(*regionMutexes[regionId]);
-      regions[regionId].agentsInRegion.push_back(agents[i]);
-    }
-#pragma omp parallel for default(none) shared(regions, numRegions)
-    for (int i = 0; i < numRegions; ++i) {
-      move(&regions[i]);
+      move(agents[i]);
     }
     break;
   }
@@ -282,9 +269,6 @@ void Ped::Model::tick() {
 
     pthread_barrier_wait(&bd.start_barrier);
     pthread_barrier_wait(&bd.done_barrier);
-    for (int i = 0; i < numRegions; ++i) {
-      move(&regions[i]);
-    }
 
     break;
   }
@@ -322,11 +306,7 @@ void Ped::Model::tick() {
       _mm512_store_ps(&desiredY[i], desY);
     }
     for (Ped::Tagent *agent : agents) {
-      int regionId = find_region(agent->getX(), agent->getY());
-      regions[regionId].agentsInRegion.push_back(agent);
-    }
-    for (auto &region : regions) {
-      move(&region);
+      move(agent);
     }
 
     break;
@@ -368,11 +348,7 @@ void Ped::Model::tick() {
       _mm512_store_ps(&desiredY[i], desY);
     }
     for (Ped::Tagent *agent : agents) {
-      int regionId = find_region(agent->getX(), agent->getY());
-      regions[regionId].agentsInRegion.push_back(agent);
-    }
-    for (auto &region : regions) {
-      move(&region);
+      move(agent);
     }
     break;
   }
@@ -398,7 +374,10 @@ void Ped::Model::tick() {
     }
     break;
   }
-  default: {
+  case Ped::SEQ_REGION: {
+    for (auto &region : regions) {
+      region.agentsInRegion.clear();
+    }
     for (Ped::Tagent *agent : agents) {
       agent->computeNextDesiredPosition();
       int regionId = find_region(agent->getX(), agent->getY());
@@ -406,6 +385,30 @@ void Ped::Model::tick() {
     }
     for (auto &region : regions) {
       move(&region);
+    }
+    break;
+  }
+  case Ped::OMP_REGION: {
+    for (auto &region : regions) {
+      region.agentsInRegion.clear();
+    }
+#pragma omp parallel for default(none) shared(agents, regions, regionMutexes)
+    for (int i = 0; i < agents.size(); ++i) {
+      agents[i]->computeNextDesiredPosition();
+      int regionId = find_region(agents[i]->getX(), agents[i]->getY());
+      std::lock_guard<std::mutex> lock(*regionMutexes[regionId]);
+      regions[regionId].agentsInRegion.push_back(agents[i]);
+    }
+#pragma omp parallel for default(none) shared(regions, numRegions)
+    for (int i = 0; i < numRegions; ++i) {
+      move(&regions[i]);
+    }
+    break;
+  }
+  default: {
+    for (Ped::Tagent *agent : agents) {
+      agent->computeNextDesiredPosition();
+      move(agent);
     }
   }
   }
@@ -418,6 +421,59 @@ void Ped::Model::tick() {
 
 // Moves the agent to the next desired position. If already taken, it will
 // be moved to a location close to it.
+
+void Ped::Model::move(Ped::Tagent *agent) {
+  // Search for neighboring agents
+  set<const Ped::Tagent *> neighbors =
+      getNeighbors(agent->getX(), agent->getY(), 2);
+
+  // Retrieve their positions
+  std::vector<std::pair<int, int>> takenPositions;
+  for (std::set<const Ped::Tagent *>::iterator neighborIt = neighbors.begin();
+       neighborIt != neighbors.end(); ++neighborIt) {
+    std::pair<int, int> position((*neighborIt)->getX(), (*neighborIt)->getY());
+    takenPositions.push_back(position);
+  }
+
+  // Compute the three alternative positions that would bring the agent
+  // closer to his desiredPosition, starting with the desiredPosition itself
+  std::vector<std::pair<int, int>> prioritizedAlternatives;
+  std::pair<int, int> pDesired(agent->getDesiredX(), agent->getDesiredY());
+  prioritizedAlternatives.push_back(pDesired);
+
+  int diffX = pDesired.first - agent->getX();
+  int diffY = pDesired.second - agent->getY();
+  std::pair<int, int> p1, p2;
+  if (diffX == 0 || diffY == 0) {
+    // Agent wants to walk straight to North, South, West or East
+    p1 = std::make_pair(pDesired.first + diffY, pDesired.second + diffX);
+    p2 = std::make_pair(pDesired.first - diffY, pDesired.second - diffX);
+  } else {
+    // Agent wants to walk diagonally
+    p1 = std::make_pair(pDesired.first, agent->getY());
+    p2 = std::make_pair(agent->getX(), pDesired.second);
+  }
+  prioritizedAlternatives.push_back(p1);
+  prioritizedAlternatives.push_back(p2);
+
+  // Find the first empty alternative position
+  for (std::vector<pair<int, int>>::iterator it =
+           prioritizedAlternatives.begin();
+       it != prioritizedAlternatives.end(); ++it) {
+
+    // If the current position is not yet taken by any neighbor
+    if (std::find(takenPositions.begin(), takenPositions.end(), *it) ==
+        takenPositions.end()) {
+
+      // Set the agent's position
+      agent->setX((*it).first);
+      agent->setY((*it).second);
+
+      break;
+    }
+  }
+}
+
 void Ped::Model::move(Ped::Model::Region *region) {
   std::unique_lock<std::mutex> regionLock(*regionMutexes[region->id]);
 
@@ -513,7 +569,6 @@ void Ped::Model::move(Ped::Model::Region *region) {
     }
   }
 }
-
 
 /// Returns the list of neighbors within dist of the point x/y. This
 /// can be the position of an agent, but it is not limited to this.

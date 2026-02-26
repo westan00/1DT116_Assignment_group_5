@@ -26,7 +26,17 @@ class Tagent;
 
 // The implementation modes for Assignment 1 + 2:
 // chooses which implementation to use for tick()
-enum IMPLEMENTATION { CUDA, VECTOR, OMP, PTHREAD, SEQ, VECTOR_OMP, CUDA_FULL };
+enum IMPLEMENTATION {
+  CUDA,
+  VECTOR,
+  OMP,
+  PTHREAD,
+  SEQ,
+  VECTOR_OMP,
+  CUDA_FULL,
+  SEQ_REGION,
+  OMP_REGION
+};
 
 class Model {
 public:
@@ -100,6 +110,7 @@ private:
 
   // Moves an agent towards its next position
   void move(Region *region);
+  void move(Ped::Tagent *agent);
 
   ////////////
   /// Everything below here won't be relevant until Assignment 3

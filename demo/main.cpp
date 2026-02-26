@@ -89,6 +89,8 @@ int main(int argc, char *argv[]) {
         {"simdomp", no_argument, NULL, 'v'},
         {"cudafull", no_argument, NULL, 'f'},
         {"no-sync", no_argument, NULL, 'n'},
+        {"seq-region", no_argument, NULL, 'r'},
+        {"omp-region", no_argument, NULL, 'g'},
         {0, 0, 0, 0} // End of options
     };
 
@@ -155,8 +157,8 @@ int main(int argc, char *argv[]) {
       implementation_to_test = Ped::PTHREAD;
       break;
     case 'q':
-      // Handle --seq
-      std::cout << "Option --seq activated\n";
+      // handle --seq
+      std::cout << "option --seq activated\n";
       implementation_to_test = Ped::SEQ;
       break;
     case 'n':
@@ -168,6 +170,16 @@ int main(int argc, char *argv[]) {
       // Handle --max-steps with a numerical argument
       max_steps = std::stoi(optarg); // Convert the argument to an integer
       std::cout << "Option --max-steps set to: " << max_steps << std::endl;
+      break;
+    case 'r':
+      // handle --seq-region
+      std::cout << "option --seq-region activated\n";
+      implementation_to_test = Ped::SEQ_REGION;
+      break;
+    case 'g':
+      // handle --omp-region
+      std::cout << "option --omp-region activated\n";
+      implementation_to_test = Ped::OMP_REGION;
       break;
     default:
       // Handle unknown long options
