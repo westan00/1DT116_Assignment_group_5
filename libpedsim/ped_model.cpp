@@ -565,7 +565,6 @@ void Ped::Model::move(Ped::Model::Region *region) {
         agent->setY(alt.second);
 
         regions[targetId].agentsInRegion.push_back(agent);
-        claimedPositions.insert(alt);
         break;
       }
     }
