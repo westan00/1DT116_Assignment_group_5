@@ -148,8 +148,15 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
     }
   }
 
+  for (int x = 0; x < 160; ++x) {
+    for (int y = 0; y < 120; ++y) {
+      agent_grid[x][y] = nullptr;
+    }
+  }
+
   this->numRegions = 4;
-  int len = sqrt(numRegions); // 4
+  int len = sqrt(numRegions); // 2
+  regions.clear();
   regions.resize(numRegions);
   int idx = 0;
   for (int i = 0; i < len; ++i) {
@@ -159,13 +166,21 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
       int y_min = (120 / len) * j;
       int y_max = (120 / len) * (j + 1);
 
+      regions[idx].id = idx;
       regions[idx].x_min = x_min;
       regions[idx].x_max = x_max;
       regions[idx].y_min = y_min;
       regions[idx].y_max = y_max;
+      regions[idx].agentsInRegion.clear();
 
       idx++;
     }
+  }
+
+  for (auto agent : agents) {
+    int x = agent->getX();
+    int y = agent->getY();
+    agent_grid[x][y] = agent;
   }
 
   // Set up heatmap (relevant for Assignment 4)
@@ -233,7 +248,7 @@ void Ped::Model::tick() {
       int regionId = find_region(agent);
       regions[regionId].agentsInRegion.push_back(agent);
     }
-    for (Ped::Model::Region &region : regions) {
+    for (auto &region : regions) {
       move(&region);
     }
     break;
@@ -247,8 +262,8 @@ void Ped::Model::tick() {
       regions[regionId].agentsInRegion.push_back(agents[i]);
     }
 #pragma omp parallel for default(none) shared(regions)
-    for (Ped::Model::Region &region : regions) {
-      move(&region);
+    for (int i = 0; i < numRegions; ++i) {
+      move(&regions[i]);
     }
     break;
   }

@@ -92,9 +92,13 @@ private:
     int id;
     int x_min, x_max, y_min, y_max;
     std::vector<Tagent *> agentsInRegion;
+    std::mutex mutex;
   };
 
   std::vector<Region> regions;
+
+  Ped::Tagent *agent_grid[160][120];
+  std::mutex cell_locks[160][120];
 
   // Moves an agent towards its next position
   void move(Region *region);
