@@ -246,14 +246,14 @@ void Ped::Model::tick() {
     break;
   }
   case Ped::OMP: {
-#pragma omp parallel for default(none) shared(agents, regions, regionMutexes)
+#pragma omp parallel for default(none) shared(this, agents, regions, regionMutexes)
     for (int i = 0; i < agents.size(); ++i) {
       agents[i]->computeNextDesiredPosition();
       int regionId = find_region(agents[i]->getX(), agents[i]->getY());
       std::lock_guard<std::mutex> lock(*regionMutexes[regionId]);
       regions[regionId].agentsInRegion.push_back(agents[i]);
     }
-#pragma omp parallel for default(none) shared(regions, numRegions)
+#pragma omp parallel for default(none) shared(this, regions, numRegions)
     for (int i = 0; i < numRegions; ++i) {
       move(&regions[i]);
     }
@@ -332,12 +332,12 @@ void Ped::Model::tick() {
     break;
   }
   case Ped::VECTOR_OMP: {
-#pragma omp parallel for
+#pragma omp parallel for shared(this)
     for (int i = 0; i < num_agents; ++i) {
       agents[i]->updateWaypoint();
     }
     // Parallelized Vectorized calculation (OMP + AVX-512)
-#pragma omp parallel for
+#pragma omp parallel for shared(this)
     for (int i = 0; i < n_padded; i += 16) {
       __m512 ax = _mm512_load_ps(&agentX[i]);
       __m512 ay = _mm512_load_ps(&agentY[i]);
@@ -377,7 +377,7 @@ void Ped::Model::tick() {
     break;
   }
   case Ped::CUDA: {
-#pragma omp parallel for
+#pragma omp parallel for shared(this)
     for (int i = 0; i < num_agents; ++i) {
       agents[i]->updateWaypoint();
     }
