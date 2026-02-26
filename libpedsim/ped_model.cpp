@@ -392,9 +392,6 @@ void Ped::Model::tick() {
     break;
   }
   case Ped::SEQ_REGION: {
-    for (auto &region : regions) {
-      region.agentsInRegion.clear();
-    }
     for (Ped::Tagent *agent : agents) {
       agent->computeNextDesiredPosition();
       int regionId = find_region(agent->getX(), agent->getY());
@@ -406,13 +403,11 @@ void Ped::Model::tick() {
     break;
   }
   case Ped::OMP_REGION: {
-    for (auto &region : regions) {
-      region.agentsInRegion.clear();
-    }
 #pragma omp parallel for default(none) shared(agents, regions, regionMutexes)
     for (int i = 0; i < agents.size(); ++i) {
       agents[i]->computeNextDesiredPosition();
       int regionId = find_region(agents[i]->getX(), agents[i]->getY());
+      std::lock_guard<std::mutex> lock(*regionMutexes[regionId]);
       regions[regionId].agentsInRegion.push_back(agents[i]);
     }
 #pragma omp parallel for default(none) shared(regions, numRegions)
