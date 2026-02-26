@@ -464,25 +464,30 @@ void Ped::Model::move(Ped::Model::Region *region) {
         agent->setX(alt.first);
         agent->setY(alt.second);
 
-        int newRegion = find_region(agent);
-        if (newRegion != region->id) {
+        int newRegionId = find_region(agent);
+        if (newRegionId != region->id) {
           regionLock.unlock();
-          std::lock(regionMutexes[region->id], regionMutexes[newRegion]);
-          std::lock_guard<std::mutex> l1(regionMutexes[region->id],
+          std::lock(*regionMutexes[region->id], *regionMutexes[newRegionId]);
+          std::lock_guard<std::mutex> l1(*regionMutexes[region->id],
                                          std::adopt_lock);
-          std::lock_guard<std::mutex> l2(regionMutexes[newRegion],
+          std::lock_guard<std::mutex> l2(*regionMutexes[newRegionId],
                                          std::adopt_lock);
 
           agentIt = region->agentsInRegion.erase(agentIt);
-          regions[newRegion].agentsInRegion.push_back(agent);
+          regions[newRegionId].agentsInRegion.push_back(agent);
 
-          regionLock = std::unique_lock<mutex>(regionMutexes, std::adopt_lock);
+          regionLock = std::unique_lock<std::mutex>(*regionMutexes[region->id],
+                                                    std::adopt_lock);
         } else {
           ++agentIt;
         }
         moved = true;
         break;
       }
+    }
+
+    if (!moved) {
+      ++agentIt;
     }
   }
 }
