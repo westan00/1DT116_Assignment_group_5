@@ -529,11 +529,13 @@ void Ped::Model::move(Ped::Model::Region *region) {
       int targetId = find_region(alt.first, alt.second);
       int oldRegionId = find_region(agent->getX(), agent->getY());
 
-      std::unique_lock<std::mutex> lock1(*regionMutexes[targetId]);
-      std::unique_lock<std::mutex> lock2(*regionMutexes[oldRegionId],
+      std::unique_lock<std::mutex> lock1(*regionMutexes[oldRegionId]);
+      std::unique_lock<std::mutex> lock2(*regionMutexes[targetId],
                                          std::defer_lock);
       if (oldRegionId != targetId) {
         lock2.lock();
+      } else {
+        lock1.lock();
       }
 
       bool taken = false;
