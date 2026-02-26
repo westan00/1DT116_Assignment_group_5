@@ -413,7 +413,6 @@ void Ped::Model::tick() {
     for (int i = 0; i < agents.size(); ++i) {
       agents[i]->computeNextDesiredPosition();
       int regionId = find_region(agents[i]->getX(), agents[i]->getY());
-      std::lock_guard<std::mutex> lock(*regionMutexes[regionId]);
       regions[regionId].agentsInRegion.push_back(agents[i]);
     }
 #pragma omp parallel for default(none) shared(regions, numRegions)
@@ -534,8 +533,6 @@ void Ped::Model::move(Ped::Model::Region *region) {
                                          std::defer_lock);
       if (oldRegionId != targetId) {
         lock2.lock();
-      } else {
-        lock1.lock();
       }
 
       bool taken = false;
