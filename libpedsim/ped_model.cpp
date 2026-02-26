@@ -358,7 +358,8 @@ void Ped::Model::tick() {
     for (int i = 0; i < num_agents; ++i) {
       agents[i]->updateWaypoint();
     }
-    launch_cuda_tick(agentX, destX, destY, desiredX, desiredY, num_agents);
+    launch_cuda_tick(agentX, agentY, destX, destY, desiredX, desiredY,
+                     num_agents);
     for (Ped::Tagent *agent : agents) {
       move(agent);
     }
