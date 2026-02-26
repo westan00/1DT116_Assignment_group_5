@@ -83,6 +83,15 @@ private:
   int *wpSequences, *wpSequencesLen, *currentWpIdx;
   int maxWpsPerAgent;
 
+  int numRegions;
+
+  struct Region {
+    int x_min, x_max, y_min, y_max;
+    std::vector<Tagent *> agentsInRegion;
+  };
+
+  std::vector<Region> regions;
+
   // Moves an agent towards its next position
   void move(Ped::Tagent *agent);
 

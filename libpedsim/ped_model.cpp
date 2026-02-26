@@ -148,8 +148,54 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
     }
   }
 
+  this->numRegions = 4;
+  int len = sqrt(numRegions); // 4
+  idx = 0;
+  for (int i = 0; i < len; ++i) {
+    int x_min = (160 / len) * i;
+    int x_max = (160 / len) * (i + 1);
+    for (int j = 0; j < len; ++j) {
+      int y_min = (120 / len) * j;
+      int y_max = (120 / len) * (j + 1);
+
+      Regions[idx]->x_min = x_min;
+      Regions[idx]->x_max = x_max;
+      Regions[idx]->y_min = y_min;
+      Regions[idx]->y_max = y_max;
+
+      idx++;
+    }
+  }
+
   // Set up heatmap (relevant for Assignment 4)
   setupHeatmapSeq();
+}
+
+void Ped::Model::find_region(Ped::Tagent agent) {
+  int len = this->numRegions;
+  float ax = agent->getX();
+  float ay = agent->getY();
+  int regionX = 0;
+  int regionY = 0;
+  if (ax > 160 / 2) {
+    regionX = 1;
+  };
+  if (ay > 120 / 2) {
+    regionY = 1;
+  };
+
+  if (regionX == 0 && regionY == 0) {
+    return 0;
+  };
+  if (regionX == 1 && regionY == 0) {
+    return 1;
+  };
+  if (regionX == 0 && regionY == 1) {
+    return 2;
+  };
+  if (regionX == 1 && regionY == 1) {
+    return 3;
+  };
 }
 
 /////////////////////////
@@ -340,124 +386,130 @@ void Ped::Model::tick() {
   default: {
     for (Ped::Tagent *agent : agents) {
       agent->computeNextDesiredPosition();
-      move(agent);
+      int regionId = find_region(agent);
+      Region[regionId]->agentsInRegion.push_back(agent);
+    }
+    for (Ped::Model::Region *region : Region) {
+      move(region);
     }
   }
   }
-}
 
-////////////
-/// Everything below here relevant for Assignment 3.
-/// Don't use this for Assignment 1!
-///////////////////////////////////////////////
+  ////////////
+  /// Everything below here relevant for Assignment 3.
+  /// Don't use this for Assignment 1!
+  ///////////////////////////////////////////////
 
-// Moves the agent to the next desired position. If already taken, it will
-// be moved to a location close to it.
-void Ped::Model::move(Ped::Tagent *agent) {
-  // Search for neighboring agents
-  set<const Ped::Tagent *> neighbors =
-      getNeighbors(agent->getX(), agent->getY(), 2);
+  // Moves the agent to the next desired position. If already taken, it will
+  // be moved to a location close to it.
+  void Ped::Model::move(Ped::Model::Region * region) {
+    // Search for neighboring agents
+    // set<const Ped::Tagent *> neighbors =
+    // getNeighbors(agent->getX(), agent->getY(), 2);
 
-  // Retrieve their positions
-  std::vector<std::pair<int, int>> takenPositions;
-  for (std::set<const Ped::Tagent *>::iterator neighborIt = neighbors.begin();
-       neighborIt != neighbors.end(); ++neighborIt) {
-    std::pair<int, int> position((*neighborIt)->getX(), (*neighborIt)->getY());
-    takenPositions.push_back(position);
-  }
+    set<const Ped::Tagent *> neighbors = region->agentsInRegion;
 
-  // Compute the three alternative positions that would bring the agent
-  // closer to his desiredPosition, starting with the desiredPosition itself
-  std::vector<std::pair<int, int>> prioritizedAlternatives;
-  std::pair<int, int> pDesired(agent->getDesiredX(), agent->getDesiredY());
-  prioritizedAlternatives.push_back(pDesired);
+    // Retrieve their positions
+    std::vector<std::pair<int, int>> takenPositions;
+    for (std::set<const Ped::Tagent *>::iterator neighborIt = neighbors.begin();
+         neighborIt != neighbors.end(); ++neighborIt) {
+      std::pair<int, int> position((*neighborIt)->getX(),
+                                   (*neighborIt)->getY());
+      takenPositions.push_back(position);
+    }
 
-  int diffX = pDesired.first - agent->getX();
-  int diffY = pDesired.second - agent->getY();
-  std::pair<int, int> p1, p2;
-  if (diffX == 0 || diffY == 0) {
-    // Agent wants to walk straight to North, South, West or East
-    p1 = std::make_pair(pDesired.first + diffY, pDesired.second + diffX);
-    p2 = std::make_pair(pDesired.first - diffY, pDesired.second - diffX);
-  } else {
-    // Agent wants to walk diagonally
-    p1 = std::make_pair(pDesired.first, agent->getY());
-    p2 = std::make_pair(agent->getX(), pDesired.second);
-  }
-  prioritizedAlternatives.push_back(p1);
-  prioritizedAlternatives.push_back(p2);
+    // Compute the three alternative positions that would bring the agent
+    // closer to his desiredPosition, starting with the desiredPosition itself
+    std::vector<std::pair<int, int>> prioritizedAlternatives;
+    std::pair<int, int> pDesired(agent->getDesiredX(), agent->getDesiredY());
+    prioritizedAlternatives.push_back(pDesired);
 
-  // Find the first empty alternative position
-  for (std::vector<pair<int, int>>::iterator it =
-           prioritizedAlternatives.begin();
-       it != prioritizedAlternatives.end(); ++it) {
+    int diffX = pDesired.first - agent->getX();
+    int diffY = pDesired.second - agent->getY();
+    std::pair<int, int> p1, p2;
+    if (diffX == 0 || diffY == 0) {
+      // Agent wants to walk straight to North, South, West or East
+      p1 = std::make_pair(pDesired.first + diffY, pDesired.second + diffX);
+      p2 = std::make_pair(pDesired.first - diffY, pDesired.second - diffX);
+    } else {
+      // Agent wants to walk diagonally
+      p1 = std::make_pair(pDesired.first, agent->getY());
+      p2 = std::make_pair(agent->getX(), pDesired.second);
+    }
+    prioritizedAlternatives.push_back(p1);
+    prioritizedAlternatives.push_back(p2);
 
-    // If the current position is not yet taken by any neighbor
-    if (std::find(takenPositions.begin(), takenPositions.end(), *it) ==
-        takenPositions.end()) {
+    // Find the first empty alternative position
+    for (std::vector<pair<int, int>>::iterator it =
+             prioritizedAlternatives.begin();
+         it != prioritizedAlternatives.end(); ++it) {
 
-      // Set the agent's position
-      agent->setX((*it).first);
-      agent->setY((*it).second);
+      // If the current position is not yet taken by any neighbor
+      if (std::find(takenPositions.begin(), takenPositions.end(), *it) ==
+          takenPositions.end()) {
 
-      break;
+        // Set the agent's position
+        agent->setX((*it).first);
+        agent->setY((*it).second);
+
+        break;
+      }
     }
   }
-}
 
-/// Returns the list of neighbors within dist of the point x/y. This
-/// can be the position of an agent, but it is not limited to this.
-/// \date    2012-01-29
-/// \return  The list of neighbors
-/// \param   x the x coordinate
-/// \param   y the y coordinate
-/// \param   dist the distance around x/y that will be searched for agents
-/// (search field is a square in the current implementation)
-set<const Ped::Tagent *> Ped::Model::getNeighbors(int x, int y,
-                                                  int dist) const {
+  /// Returns the list of neighbors within dist of the point x/y. This
+  /// can be the position of an agent, but it is not limited to this.
+  /// \date    2012-01-29
+  /// \return  The list of neighbors
+  /// \param   x the x coordinate
+  /// \param   y the y coordinate
+  /// \param   dist the distance around x/y that will be searched for agents
+  /// (search field is a square in the current implementation)
+  set<const Ped::Tagent *> Ped::Model::getNeighbors(int x, int y, int dist)
+      const {
 
-  // create the output list
-  // ( It would be better to include only the agents close by, but this
-  // programmer is lazy.)
-  return set<const Ped::Tagent *>(agents.begin(), agents.end());
-}
-
-void Ped::Model::cleanup() {
-  // Nothing to do here right now.
-}
-
-Ped::Model::~Model() {
-  if (implementation == Ped::CUDA_FULL) {
-    cudaFree(agentX);
-    cudaFree(agentY);
-    cudaFree(destX);
-    cudaFree(destY);
-    cudaFree(desiredX);
-    cudaFree(desiredY);
-    cudaFree(wpX);
-    cudaFree(wpY);
-    cudaFree(wpR);
-    cudaFree(wpSequences);
-    cudaFree(wpSequencesLen);
-    cudaFree(currentWpIdx);
-  } else if (implementation == Ped::CUDA) {
-    cudaFree(agentX);
-    cudaFree(agentY);
-    cudaFree(destX);
-    cudaFree(destY);
-    cudaFree(desiredX);
-    cudaFree(desiredY);
-  } else {
-    free(agentX);
-    free(agentY);
-    free(destX);
-    free(destY);
-    free(desiredX);
-    free(desiredY);
+    // create the output list
+    // ( It would be better to include only the agents close by, but this
+    // programmer is lazy.)
+    return set<const Ped::Tagent *>(agents.begin(), agents.end());
   }
 
-  std::for_each(agents.begin(), agents.end(),
-                [](Ped::Tagent *agent) { delete agent; });
-  std::for_each(destinations.begin(), destinations.end(),
-                [](Ped::Twaypoint *destination) { delete destination; });
-}
+  void Ped::Model::cleanup() {
+    // Nothing to do here right now.
+  }
+
+  Ped::Model::~Model() {
+    if (implementation == Ped::CUDA_FULL) {
+      cudaFree(agentX);
+      cudaFree(agentY);
+      cudaFree(destX);
+      cudaFree(destY);
+      cudaFree(desiredX);
+      cudaFree(desiredY);
+      cudaFree(wpX);
+      cudaFree(wpY);
+      cudaFree(wpR);
+      cudaFree(wpSequences);
+      cudaFree(wpSequencesLen);
+      cudaFree(currentWpIdx);
+    } else if (implementation == Ped::CUDA) {
+      cudaFree(agentX);
+      cudaFree(agentY);
+      cudaFree(destX);
+      cudaFree(destY);
+      cudaFree(desiredX);
+      cudaFree(desiredY);
+    } else {
+      free(agentX);
+      free(agentY);
+      free(destX);
+      free(destY);
+      free(desiredX);
+      free(desiredY);
+    }
+
+    std::for_each(agents.begin(), agents.end(),
+                  [](Ped::Tagent *agent) { delete agent; });
+    std::for_each(destinations.begin(), destinations.end(),
+                  [](Ped::Twaypoint *destination) { delete destination; });
+  }
