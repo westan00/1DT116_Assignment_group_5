@@ -150,7 +150,7 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
   }
 
   if (implementation == SEQ_REGION || implementation == OMP_REGION) {
-    int n = 16; // 16x16 = 256 regions
+    int n = 2; // 16x16 = 256 regions
     this->numRegions = n * n;
     regionMutexes.clear();
     for (int i = 0; i < numRegions; ++i) {
