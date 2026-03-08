@@ -244,6 +244,7 @@ void Ped::Model::tick() {
       agent->computeNextDesiredPosition();
       move(agent);
     }
+    updateHeatmapSeq();
     break;
   }
   case Ped::OMP: {
@@ -251,6 +252,7 @@ void Ped::Model::tick() {
     for (int i = 0; i < agents.size(); ++i) {
       agents[i]->computeNextDesiredPosition();
     }
+    updateHeatmapSeq();
     for (Ped::Tagent *agent : agents) {
       move(agent);
     }
@@ -278,6 +280,7 @@ void Ped::Model::tick() {
 
     pthread_barrier_wait(&bd.start_barrier);
     pthread_barrier_wait(&bd.done_barrier);
+    updateHeatmapSeq();
     for (Ped::Tagent *agent : agents) {
       move(agent);
     }
@@ -316,6 +319,7 @@ void Ped::Model::tick() {
       _mm512_store_ps(&desiredX[i], desX);
       _mm512_store_ps(&desiredY[i], desY);
     }
+    updateHeatmapSeq();
     for (Ped::Tagent *agent : agents) {
       move(agent);
     }
@@ -358,6 +362,7 @@ void Ped::Model::tick() {
       _mm512_store_ps(&desiredX[i], desX);
       _mm512_store_ps(&desiredY[i], desY);
     }
+    updateHeatmapSeq();
     for (Ped::Tagent *agent : agents) {
       move(agent);
     }
@@ -368,6 +373,7 @@ void Ped::Model::tick() {
     for (int i = 0; i < num_agents; ++i) {
       agents[i]->updateWaypoint();
     }
+    updateHeatmapSeq();
     launch_cuda_tick(agentX, agentY, destX, destY, desiredX, desiredY,
                      num_agents);
     for (Ped::Tagent *agent : agents) {
@@ -383,6 +389,7 @@ void Ped::Model::tick() {
                           wpSequences, wpSequencesLen, wpX, wpY, wpR,
                           maxWpsPerAgent, num_agents);
 
+    updateHeatmapSeq();
     for (Ped::Tagent *agent : agents) {
       move(agent);
     }
@@ -400,6 +407,7 @@ void Ped::Model::tick() {
       int regionId = find_region(agent->getX(), agent->getY());
       regions[regionId].agentsInRegion.push_back(agent);
     }
+    updateHeatmapSeq();
     for (auto &region : regions) {
       move(&region);
     }
@@ -416,6 +424,7 @@ void Ped::Model::tick() {
       std::lock_guard<std::mutex> lock(*regionMutexes[regionId]);
       regions[regionId].agentsInRegion.push_back(agents[i]);
     }
+    updateHeatmapSeq();
 #pragma omp parallel for default(none) shared(regions, numRegions)
     for (int i = 0; i < numRegions; ++i) {
       move(&regions[i]);
@@ -427,6 +436,7 @@ void Ped::Model::tick() {
       agent->computeNextDesiredPosition();
       move(agent);
     }
+    updateHeatmapSeq();
   }
   }
 }
