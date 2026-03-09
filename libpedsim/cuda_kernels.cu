@@ -112,24 +112,20 @@ __global__ void add_agent_heat_kernel(int *heatmap, float *agentX,
     int x = (int)agentX[i];
     int y = (int)agentY[i];
     if (x >= 0 && x < SIZE && y >= 0 && y < SIZE) {
-      if (heatmap[y * SIZE + x] > 215) {
-        atomicExch(&heatmap[y * SIZE + x], 255);
-      } else {
-        atomicAdd(&heatmap[y * SIZE + x], 40);
-      }
+      atomicAdd(&heatmap[y * SIZE + x], 40);
     }
   }
 }
 
-//__global__ void clamp_heatmap_kernel(int *heatmap) {
-// int x = blockIdx.x * blockDim.x + threadIdx.x;
-// int y = blockIdx.y * blockDim.y + threadIdx.y;
-// if (x < SIZE && y < SIZE) {
-// int idx = y * SIZE + x;
-// if (heatmap[idx] > 255)
-// heatmap[idx] = 255;
-//}
-//}
+__global__ void clamp_heatmap_kernel(int *heatmap) {
+  int x = blockIdx.x * blockDim.x + threadIdx.x;
+  int y = blockIdx.y * blockDim.y + threadIdx.y;
+  if (x < SIZE && y < SIZE) {
+    int idx = y * SIZE + x;
+    if (heatmap[idx] > 255)
+      heatmap[idx] = 255;
+  }
+}
 
 __global__ void scale_heatmap_kernel(int *heatmap, int *scaled_heatmap) {
   int x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -227,7 +223,7 @@ extern "C" void launch_heatmap_update(int *d_heatmap, int *d_scaled_heatmap,
                                                           d_agentY, num_agents);
   }
 
-  // clamp_heatmap_kernel<<<grid, block, 0, stream>>>(d_heatmap);
+  clamp_heatmap_kernel<<<grid, block, 0, stream>>>(d_heatmap);
 
   dim3 scaled_grid((SCALED_SIZE + block.x - 1) / block.x,
                    (SCALED_SIZE + block.y - 1) / block.y);
