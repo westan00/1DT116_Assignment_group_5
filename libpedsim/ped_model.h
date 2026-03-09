@@ -12,6 +12,9 @@
 #define _ped_model_h_
 
 #include "ped_agent.h"
+#ifndef NOCUDA
+#include <cuda_runtime.h>
+#endif
 #include <atomic>
 #include <immintrin.h>
 #include <map>
@@ -140,10 +143,12 @@ private:
   void updateHeatmapSeq();
 
   // CUDA heatmap members
+#ifndef NOCUDA
   int *d_heatmap;
   int *d_scaled_heatmap;
   int *d_blurred_heatmap;
   cudaStream_t heatmap_stream;
+#endif
   void setupHeatmapCUDA();
 };
 } // namespace Ped
