@@ -146,39 +146,31 @@ __global__ void blur_heatmap_kernel(int* scaled, int* blurred) {
 
     int tx = threadIdx.x;
     int ty = threadIdx.y;
-    int x = blockIdx.x * blockDim.x + tx;
-    int y = blockIdx.y * blockDim.y + ty;
+    int x = (int)blockIdx.x * (int)blockDim.x + tx;
+    int y = (int)blockIdx.y * (int)blockDim.y + ty;
 
-    int lx = tx + HALO;
-    int ly = ty + HALO;
+    // Efficiently load the 20x20 tile into shared memory using all threads in the block
+    for (int tid = ty * (int)blockDim.x + tx; tid < S_DIM * S_DIM; tid += (int)blockDim.x * (int)blockDim.y) {
+        int ly = tid / S_DIM;
+        int lx = tid % S_DIM;
+        int gx = (int)blockIdx.x * (int)blockDim.x + lx - HALO;
+        int gy = (int)blockIdx.y * (int)blockDim.y + ly - HALO;
 
-    // Load center
-    if (x < SCALED_SIZE && y < SCALED_SIZE)
-        sh[ly][lx] = scaled[y * SCALED_SIZE + x];
-    else
-        sh[ly][lx] = 0;
-
-    // Load halos and corners
-    // This could be more optimized but this handles all cases correctly for arbitrary block boundaries
-    for (int i = tx; i < S_DIM; i += blockDim.x) {
-        for (int j = ty; j < S_DIM; j += blockDim.y) {
-            int gx = (int)blockIdx.x * (int)blockDim.x + i - HALO;
-            int gy = (int)blockIdx.y * (int)blockDim.y + j - HALO;
-            if (gx >= 0 && gx < SCALED_SIZE && gy >= 0 && gy < SCALED_SIZE) {
-                sh[j][i] = scaled[gy * SCALED_SIZE + gx];
-            } else {
-                sh[j][i] = 0;
-            }
+        if (gx >= 0 && gx < SCALED_SIZE && gy >= 0 && gy < SCALED_SIZE) {
+            sh[ly][lx] = scaled[gy * SCALED_SIZE + gx];
+        } else {
+            sh[ly][lx] = 0;
         }
     }
 
     __syncthreads();
 
+    // Compute blur using shared memory tile
     if (x >= 2 && x < SCALED_SIZE - 2 && y >= 2 && y < SCALED_SIZE - 2) {
         int sum = 0;
         for (int i = -2; i <= 2; i++) {
             for (int j = -2; j <= 2; j++) {
-                sum += blur_weights[i + 2][j + 2] * sh[ly + i][lx + j];
+                sum += blur_weights[i + 2][j + 2] * sh[ty + HALO + i][tx + HALO + j];
             }
         }
         int value = sum / WEIGHTSUM;

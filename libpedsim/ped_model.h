@@ -128,7 +128,7 @@ private:
 
 #define SIZE 1024
 #define CELLSIZE 5
-#define SCALED_SIZE SIZE *CELLSIZE
+#define SCALED_SIZE (SIZE * CELLSIZE)
 
   // The heatmap representing the density of agents
   int **heatmap;
@@ -147,7 +147,10 @@ private:
   int *d_heatmap;
   int *d_scaled_heatmap;
   int *d_blurred_heatmap;
+  float *d_coordX;
+  float *d_coordY;
   cudaStream_t heatmap_stream;
+  cudaEvent_t start_event, stop_event;
 #endif
   void setupHeatmapCUDA();
 };
