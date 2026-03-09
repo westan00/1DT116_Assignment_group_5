@@ -30,6 +30,11 @@ extern "C" void launch_cuda_tick_full(float *agentX, float *agentY,
                                       float *wpY, float *wpR,
                                       int maxWpsPerAgent, int n);
 
+extern "C" void launch_heatmap_update(int *d_heatmap, int *d_scaled_heatmap,
+                                      int *d_blurred_heatmap, float *d_agentX,
+                                      float *d_agentY, int num_agents,
+                                      cudaStream_t stream);
+
 #ifndef NOCUDA
 #include "cuda_testkernel.h"
 #endif
@@ -180,7 +185,30 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
   }
 
   // Set up heatmap (relevant for Assignment 4)
-  setupHeatmapSeq();
+  if (implementation == Ped::CUDA || implementation == Ped::CUDA_FULL) {
+    setupHeatmapCUDA();
+  } else {
+    setupHeatmapSeq();
+  }
+}
+
+void Ped::Model::setupHeatmapCUDA() {
+  cudaStreamCreate(&heatmap_stream);
+
+  cudaMalloc(&d_heatmap, SIZE * SIZE * sizeof(int));
+  cudaMemset(d_heatmap, 0, SIZE * SIZE * sizeof(int));
+
+  cudaMalloc(&d_scaled_heatmap, SCALED_SIZE * SCALED_SIZE * sizeof(int));
+  cudaMalloc(&d_blurred_heatmap, SCALED_SIZE * SCALED_SIZE * sizeof(int));
+
+  // Host-side buffers for the final heatmap (using pinned memory for async
+  // transfer)
+  int *bhm;
+  cudaMallocHost(&bhm, SCALED_SIZE * SCALED_SIZE * sizeof(int));
+  blurred_heatmap = (int **)malloc(SCALED_SIZE * sizeof(int *));
+  for (int i = 0; i < SCALED_SIZE; i++) {
+    blurred_heatmap[i] = bhm + SCALED_SIZE * i;
+  }
 }
 
 int Ped::Model::find_region(int x, int y) {
@@ -373,14 +401,21 @@ void Ped::Model::tick() {
     for (int i = 0; i < num_agents; ++i) {
       agents[i]->updateWaypoint();
     }
-    updateHeatmapSeq();
     launch_cuda_tick(agentX, agentY, destX, destY, desiredX, desiredY,
                      num_agents);
+    cudaDeviceSynchronize(); // Ensure desired positions are ready for CPU and Heatmap stream
+
+    launch_heatmap_update(d_heatmap, d_scaled_heatmap, d_blurred_heatmap,
+                          desiredX, desiredY, num_agents, heatmap_stream);
+    cudaMemcpyAsync(blurred_heatmap[0], d_blurred_heatmap,
+                    SCALED_SIZE * SCALED_SIZE * sizeof(int),
+                    cudaMemcpyDeviceToHost, heatmap_stream);
+
     for (Ped::Tagent *agent : agents) {
       move(agent);
     }
     if (cuda_sync) {
-      cudaDeviceSynchronize();
+      cudaStreamSynchronize(heatmap_stream);
     }
     break;
   }
@@ -388,13 +423,19 @@ void Ped::Model::tick() {
     launch_cuda_tick_full(agentX, agentY, desiredX, desiredY, currentWpIdx,
                           wpSequences, wpSequencesLen, wpX, wpY, wpR,
                           maxWpsPerAgent, num_agents);
+    cudaDeviceSynchronize(); // Ensure desired positions are ready for CPU and Heatmap stream
 
-    updateHeatmapSeq();
+    launch_heatmap_update(d_heatmap, d_scaled_heatmap, d_blurred_heatmap,
+                          desiredX, desiredY, num_agents, heatmap_stream);
+    cudaMemcpyAsync(blurred_heatmap[0], d_blurred_heatmap,
+                    SCALED_SIZE * SCALED_SIZE * sizeof(int),
+                    cudaMemcpyDeviceToHost, heatmap_stream);
+
     for (Ped::Tagent *agent : agents) {
       move(agent);
     }
     if (cuda_sync) {
-      cudaDeviceSynchronize();
+      cudaStreamSynchronize(heatmap_stream);
     }
     break;
   }
@@ -603,26 +644,29 @@ void Ped::Model::cleanup() {
 }
 
 Ped::Model::~Model() {
-  if (implementation == Ped::CUDA_FULL) {
+  if (implementation == Ped::CUDA_FULL || implementation == Ped::CUDA) {
     cudaFree(agentX);
     cudaFree(agentY);
     cudaFree(destX);
     cudaFree(destY);
     cudaFree(desiredX);
     cudaFree(desiredY);
-    cudaFree(wpX);
-    cudaFree(wpY);
-    cudaFree(wpR);
-    cudaFree(wpSequences);
-    cudaFree(wpSequencesLen);
-    cudaFree(currentWpIdx);
-  } else if (implementation == Ped::CUDA) {
-    cudaFree(agentX);
-    cudaFree(agentY);
-    cudaFree(destX);
-    cudaFree(destY);
-    cudaFree(desiredX);
-    cudaFree(desiredY);
+
+    if (implementation == Ped::CUDA_FULL) {
+      cudaFree(wpX);
+      cudaFree(wpY);
+      cudaFree(wpR);
+      cudaFree(wpSequences);
+      cudaFree(wpSequencesLen);
+      cudaFree(currentWpIdx);
+    }
+
+    cudaFree(d_heatmap);
+    cudaFree(d_scaled_heatmap);
+    cudaFree(d_blurred_heatmap);
+    cudaStreamDestroy(heatmap_stream);
+    cudaFreeHost(blurred_heatmap[0]);
+    free(blurred_heatmap);
   } else {
     free(agentX);
     free(agentY);
@@ -630,6 +674,14 @@ Ped::Model::~Model() {
     free(destY);
     free(desiredX);
     free(desiredY);
+
+    // Free sequential heatmap
+    free(heatmap[0]);
+    free(heatmap);
+    free(scaled_heatmap[0]);
+    free(scaled_heatmap);
+    free(blurred_heatmap[0]);
+    free(blurred_heatmap);
   }
 
   std::for_each(agents.begin(), agents.end(),

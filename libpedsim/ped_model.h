@@ -138,6 +138,13 @@ private:
 
   void setupHeatmapSeq();
   void updateHeatmapSeq();
+
+  // CUDA heatmap members
+  int *d_heatmap;
+  int *d_scaled_heatmap;
+  int *d_blurred_heatmap;
+  cudaStream_t heatmap_stream;
+  void setupHeatmapCUDA();
 };
 } // namespace Ped
 #endif
