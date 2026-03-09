@@ -112,7 +112,7 @@ __global__ void add_agent_heat_kernel(int *heatmap, float *agentX,
     int x = (int)agentX[i];
     int y = (int)agentY[i];
     if (x >= 0 && x < SIZE && y >= 0 && y < SIZE) {
-      if (&heatmap[y * SIZE + x]) {
+      if (&heatmap[y * SIZE + x] > 215) {
         atomicExch(&heatmap[y * SIZE + x], 255);
       } else {
         atomicAdd(&heatmap[y * SIZE + x], 40);
