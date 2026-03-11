@@ -695,8 +695,6 @@ Ped::Model::~Model() {
     cudaFree(d_coordX);
     cudaFree(d_coordY);
     cudaStreamDestroy(heatmap_stream);
-    cudaEventDestroy(start_event);
-    cudaEventDestroy(stop_event);
     cudaFreeHost(blurred_heatmap[0]);
     free(blurred_heatmap);
   } else {
