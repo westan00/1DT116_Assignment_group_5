@@ -147,7 +147,6 @@ private:
   float *d_coordX;
   float *d_coordY;
   cudaStream_t heatmap_stream;
-  cudaEvent_t start_event, stop_event;
 #endif
   void setupHeatmapCUDA();
 };
