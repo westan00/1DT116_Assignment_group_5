@@ -33,7 +33,7 @@ extern "C" void launch_cuda_tick_full(float *agentX, float *agentY,
 extern "C" void launch_heatmap_update(int *d_heatmap, int *d_scaled_heatmap,
                                       int *d_blurred_heatmap, float *d_agentX,
                                       float *d_agentY, int num_agents,
-                                      cudaStream_t stream);
+                                      cudaStream_t stream, float *timings);
 
 #ifndef NOCUDA
 #include "cuda_testkernel.h"
@@ -411,11 +411,25 @@ void Ped::Model::tick() {
     cudaMemcpyAsync(d_coordY, desiredY, num_agents * sizeof(float),
                     cudaMemcpyDeviceToDevice, heatmap_stream);
 
+    float timings[5];
     launch_heatmap_update(d_heatmap, d_scaled_heatmap, d_blurred_heatmap,
-                          d_coordX, d_coordY, num_agents, heatmap_stream);
+                          d_coordX, d_coordY, num_agents, heatmap_stream,
+                          timings);
     cudaMemcpyAsync(blurred_heatmap[0], d_blurred_heatmap,
                     SCALED_SIZE * SCALED_SIZE * sizeof(int),
                     cudaMemcpyDeviceToHost, heatmap_stream);
+
+    static FILE *csv = nullptr;
+    static int tick_num = 0;
+    if (!csv) {
+      csv = fopen("heatmap_timings.csv", "w");
+      fprintf(csv, "tick,fade_ms,heat_ms,clamp_ms,scale_ms,blur_ms,total_ms\n");
+    }
+    float total =
+        timings[0] + timings[1] + timings[2] + timings[3] + timings[4];
+    fprintf(csv, "%d,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f\n", tick_num++, timings[0],
+            timings[1], timings[2], timings[3], timings[4], total);
+    fflush(csv);
 
     for (Ped::Tagent *agent : agents) {
       move(agent);

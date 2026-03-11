@@ -207,12 +207,22 @@ extern "C" void launch_cuda_tick_full(float *agentX, float *agentY,
 extern "C" void launch_heatmap_update(int *d_heatmap, int *d_scaled_heatmap,
                                       int *d_blurred_heatmap, float *d_agentX,
                                       float *d_agentY, int num_agents,
-                                      cudaStream_t stream) {
+                                      cudaStream_t stream, float *timings) {
+  cudaEvent_t e0, e1, e2, e3, e4, e5;
+  cudaEventCreate(&e0);
+  cudaEventCreate(&e1);
+  cudaEventCreate(&e2);
+  cudaEventCreate(&e3);
+  cudaEventCreate(&e4);
+  cudaEventCreate(&e5);
+
   dim3 block(16, 16);
   dim3 grid((SIZE + block.x - 1) / block.x, (SIZE + block.y - 1) / block.y);
 
+  cudaEventRecord(e0, stream);
   fade_heatmap_kernel<<<grid, block, 0, stream>>>(d_heatmap);
 
+  cudaEventRecord(e1, stream);
   int threads = 256;
   int blocks = (num_agents + threads - 1) / threads;
   if (num_agents > 0) {
@@ -220,13 +230,33 @@ extern "C" void launch_heatmap_update(int *d_heatmap, int *d_scaled_heatmap,
                                                           d_agentY, num_agents);
   }
 
+  cudaEventRecord(e2, stream);
   clamp_heatmap_kernel<<<grid, block, 0, stream>>>(d_heatmap);
 
+  cudaEventRecord(e3, stream);
   dim3 scaled_grid((SCALED_SIZE + block.x - 1) / block.x,
                    (SCALED_SIZE + block.y - 1) / block.y);
   scale_heatmap_kernel<<<scaled_grid, block, 0, stream>>>(d_heatmap,
                                                           d_scaled_heatmap);
 
+  cudaEventRecord(e4, stream);
   blur_heatmap_kernel<<<scaled_grid, block, 0, stream>>>(d_scaled_heatmap,
                                                          d_blurred_heatmap);
+
+  cudaEventRecord(e5, stream);
+
+  cudaStreamSynchronize(stream);
+
+  cudaEventElapsedTime(&timings[0], e0, e1);
+  cudaEventElapsedTime(&timings[1], e1, e2);
+  cudaEventElapsedTime(&timings[2], e2, e3);
+  cudaEventElapsedTime(&timings[3], e3, e4);
+  cudaEventElapsedTime(&timings[4], e4, e5);
+
+  cudaEventDestroy(e0);
+  cudaEventDestroy(e1);
+  cudaEventDestroy(e2);
+  cudaEventDestroy(e3);
+  cudaEventDestroy(e4);
+  cudaEventDestroy(e5);
 }
