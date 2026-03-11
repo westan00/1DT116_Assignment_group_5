@@ -456,7 +456,6 @@ void Ped::Model::tick() {
       std::lock_guard<std::mutex> lock(*regionMutexes[regionId]);
       regions[regionId].agentsInRegion.push_back(agents[i]);
     }
-    updateHeatmapSeq();
 #pragma omp parallel for default(none) shared(regions, numRegions)
     for (int i = 0; i < numRegions; ++i) {
       move(&regions[i]);
