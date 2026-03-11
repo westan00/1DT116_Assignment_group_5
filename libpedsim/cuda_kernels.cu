@@ -149,8 +149,6 @@ __global__ void blur_heatmap_kernel(int *scaled, int *blurred) {
   int x = (int)blockIdx.x * (int)blockDim.x + tx;
   int y = (int)blockIdx.y * (int)blockDim.y + ty;
 
-  // Efficiently load the 20x20 tile into shared memory using all threads in the
-  // block
   for (int tid = ty * (int)blockDim.x + tx; tid < S_DIM * S_DIM;
        tid += (int)blockDim.x * (int)blockDim.y) {
     int ly = tid / S_DIM;
@@ -167,7 +165,6 @@ __global__ void blur_heatmap_kernel(int *scaled, int *blurred) {
 
   __syncthreads();
 
-  // Compute blur using shared memory tile
   if (x >= 2 && x < SCALED_SIZE - 2 && y >= 2 && y < SCALED_SIZE - 2) {
     int sum = 0;
     for (int i = -2; i <= 2; i++) {

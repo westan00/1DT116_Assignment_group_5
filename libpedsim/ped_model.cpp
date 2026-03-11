@@ -203,13 +203,9 @@ void Ped::Model::setupHeatmapCUDA() {
   cudaMalloc(&d_scaled_heatmap, SCALED_SIZE * SCALED_SIZE * sizeof(int));
   cudaMalloc(&d_blurred_heatmap, SCALED_SIZE * SCALED_SIZE * sizeof(int));
 
-  // Device-only coordinate buffers for heatmap processing (prevents managed
-  // memory sync overhead during CPU overlap)
   cudaMalloc(&d_coordX, n_padded * sizeof(float));
   cudaMalloc(&d_coordY, n_padded * sizeof(float));
 
-  // Host-side buffers for the final heatmap (using pinned memory for async
-  // transfer)
   int *bhm;
   cudaMallocHost(&bhm, SCALED_SIZE * SCALED_SIZE * sizeof(int));
   blurred_heatmap = (int **)malloc(SCALED_SIZE * sizeof(int *));
@@ -410,16 +406,13 @@ void Ped::Model::tick() {
     }
     launch_cuda_tick(agentX, agentY, destX, destY, desiredX, desiredY,
                      num_agents);
-    cudaDeviceSynchronize(); // Coordinates must be ready
+    cudaDeviceSynchronize();
 
-    // Copy to device-only buffers so GPU and CPU can access data without
-    // interference
     cudaMemcpyAsync(d_coordX, desiredX, num_agents * sizeof(float),
                     cudaMemcpyDeviceToDevice, heatmap_stream);
     cudaMemcpyAsync(d_coordY, desiredY, num_agents * sizeof(float),
                     cudaMemcpyDeviceToDevice, heatmap_stream);
 
-    // Track GPU execution
     cudaEventRecord(start_event, heatmap_stream);
     launch_heatmap_update(d_heatmap, d_scaled_heatmap, d_blurred_heatmap,
                           d_coordX, d_coordY, num_agents, heatmap_stream);
@@ -428,7 +421,6 @@ void Ped::Model::tick() {
                     cudaMemcpyDeviceToHost, heatmap_stream);
     cudaEventRecord(stop_event, heatmap_stream);
 
-    // Track CPU execution
     double cpu_start = omp_get_wtime();
     for (Ped::Tagent *agent : agents) {
       move(agent);
@@ -439,12 +431,12 @@ void Ped::Model::tick() {
       cudaStreamSynchronize(heatmap_stream);
     }
 
-    // Profiling output once every 100 ticks
     static int tick_cnt = 0;
     if (++tick_cnt % 100 == 0) {
       float gpu_ms = 0;
       cudaEventElapsedTime(&gpu_ms, start_event, stop_event);
-      printf("Overlap Stats (Grid %dx%d): CPU Loop: %.2f ms, GPU Heatmap: %.2f ms (Concurrent)\n",
+      printf("Overlap Stats (Grid %dx%d): CPU Loop: %.2f ms, GPU Heatmap: %.2f "
+             "ms (Concurrent)\n",
              (SCALED_SIZE + 15) / 16, (SCALED_SIZE + 15) / 16,
              (cpu_end - cpu_start) * 1000.0, gpu_ms);
     }
@@ -454,15 +446,13 @@ void Ped::Model::tick() {
     launch_cuda_tick_full(agentX, agentY, desiredX, desiredY, currentWpIdx,
                           wpSequences, wpSequencesLen, wpX, wpY, wpR,
                           maxWpsPerAgent, num_agents);
-    cudaDeviceSynchronize(); // Coordinates must be ready
+    cudaDeviceSynchronize();
 
-    // Copy to device-only buffers
     cudaMemcpyAsync(d_coordX, desiredX, num_agents * sizeof(float),
                     cudaMemcpyDeviceToDevice, heatmap_stream);
     cudaMemcpyAsync(d_coordY, desiredY, num_agents * sizeof(float),
                     cudaMemcpyDeviceToDevice, heatmap_stream);
 
-    // Track GPU execution
     cudaEventRecord(start_event, heatmap_stream);
     launch_heatmap_update(d_heatmap, d_scaled_heatmap, d_blurred_heatmap,
                           d_coordX, d_coordY, num_agents, heatmap_stream);
@@ -471,7 +461,6 @@ void Ped::Model::tick() {
                     cudaMemcpyDeviceToHost, heatmap_stream);
     cudaEventRecord(stop_event, heatmap_stream);
 
-    // Track CPU execution
     double cpu_start = omp_get_wtime();
     for (Ped::Tagent *agent : agents) {
       move(agent);
@@ -482,12 +471,12 @@ void Ped::Model::tick() {
       cudaStreamSynchronize(heatmap_stream);
     }
 
-    // Profiling output once every 100 ticks
     static int tick_cnt_full = 0;
     if (++tick_cnt_full % 100 == 0) {
       float gpu_ms = 0;
       cudaEventElapsedTime(&gpu_ms, start_event, stop_event);
-      printf("Overlap Stats (FULL): CPU Loop: %.2f ms, GPU Heatmap: %.2f ms (Concurrent)\n",
+      printf("Overlap Stats (FULL): CPU Loop: %.2f ms, GPU Heatmap: %.2f ms "
+             "(Concurrent)\n",
              (cpu_end - cpu_start) * 1000.0, gpu_ms);
     }
     break;
