@@ -194,8 +194,6 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
 
 void Ped::Model::setupHeatmapCUDA() {
   cudaStreamCreate(&heatmap_stream);
-  cudaEventCreate(&start_event);
-  cudaEventCreate(&stop_event);
 
   cudaMalloc(&d_heatmap, SIZE * SIZE * sizeof(int));
   cudaMemset(d_heatmap, 0, SIZE * SIZE * sizeof(int));
@@ -413,32 +411,18 @@ void Ped::Model::tick() {
     cudaMemcpyAsync(d_coordY, desiredY, num_agents * sizeof(float),
                     cudaMemcpyDeviceToDevice, heatmap_stream);
 
-    cudaEventRecord(start_event, heatmap_stream);
     launch_heatmap_update(d_heatmap, d_scaled_heatmap, d_blurred_heatmap,
                           d_coordX, d_coordY, num_agents, heatmap_stream);
     cudaMemcpyAsync(blurred_heatmap[0], d_blurred_heatmap,
                     SCALED_SIZE * SCALED_SIZE * sizeof(int),
                     cudaMemcpyDeviceToHost, heatmap_stream);
-    cudaEventRecord(stop_event, heatmap_stream);
 
-    double cpu_start = omp_get_wtime();
     for (Ped::Tagent *agent : agents) {
       move(agent);
     }
-    double cpu_end = omp_get_wtime();
 
     if (cuda_sync) {
       cudaStreamSynchronize(heatmap_stream);
-    }
-
-    static int tick_cnt = 0;
-    if (++tick_cnt % 100 == 0) {
-      float gpu_ms = 0;
-      cudaEventElapsedTime(&gpu_ms, start_event, stop_event);
-      printf("Overlap Stats (Grid %dx%d): CPU Loop: %.2f ms, GPU Heatmap: %.2f "
-             "ms (Concurrent)\n",
-             (SCALED_SIZE + 15) / 16, (SCALED_SIZE + 15) / 16,
-             (cpu_end - cpu_start) * 1000.0, gpu_ms);
     }
     break;
   }
@@ -453,32 +437,20 @@ void Ped::Model::tick() {
     cudaMemcpyAsync(d_coordY, desiredY, num_agents * sizeof(float),
                     cudaMemcpyDeviceToDevice, heatmap_stream);
 
-    cudaEventRecord(start_event, heatmap_stream);
     launch_heatmap_update(d_heatmap, d_scaled_heatmap, d_blurred_heatmap,
                           d_coordX, d_coordY, num_agents, heatmap_stream);
     cudaMemcpyAsync(blurred_heatmap[0], d_blurred_heatmap,
                     SCALED_SIZE * SCALED_SIZE * sizeof(int),
                     cudaMemcpyDeviceToHost, heatmap_stream);
-    cudaEventRecord(stop_event, heatmap_stream);
 
-    double cpu_start = omp_get_wtime();
     for (Ped::Tagent *agent : agents) {
       move(agent);
     }
-    double cpu_end = omp_get_wtime();
 
     if (cuda_sync) {
       cudaStreamSynchronize(heatmap_stream);
     }
 
-    static int tick_cnt_full = 0;
-    if (++tick_cnt_full % 100 == 0) {
-      float gpu_ms = 0;
-      cudaEventElapsedTime(&gpu_ms, start_event, stop_event);
-      printf("Overlap Stats (FULL): CPU Loop: %.2f ms, GPU Heatmap: %.2f ms "
-             "(Concurrent)\n",
-             (cpu_end - cpu_start) * 1000.0, gpu_ms);
-    }
     break;
   }
   case Ped::SEQ_REGION: {
@@ -709,8 +681,6 @@ Ped::Model::~Model() {
     cudaFree(d_coordX);
     cudaFree(d_coordY);
     cudaStreamDestroy(heatmap_stream);
-    cudaEventDestroy(start_event);
-    cudaEventDestroy(stop_event);
     cudaFreeHost(blurred_heatmap[0]);
     free(blurred_heatmap);
   } else {
