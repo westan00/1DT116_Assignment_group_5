@@ -154,7 +154,8 @@ void Ped::Model::setup(std::vector<Ped::Tagent *> agentsInScenario,
     }
   }
 
-  if (implementation == SEQ_REGION || implementation == OMP_REGION) {
+  if (implementation == SEQ_REGION || implementation == OMP_REGION ||
+      implementation == CUDA_FULL) {
     int n = 2; // 2x2 = 4 regions
     this->numRegions = n * n;
     regionMutexes.clear();
@@ -422,6 +423,7 @@ void Ped::Model::tick() {
     cudaEventRecord(stop_event, heatmap_stream);
 
     double cpu_start = omp_get_wtime();
+#pragma omp parallel for default(none)
     for (Ped::Tagent *agent : agents) {
       move(agent);
     }
@@ -461,24 +463,34 @@ void Ped::Model::tick() {
                     cudaMemcpyDeviceToHost, heatmap_stream);
     cudaEventRecord(stop_event, heatmap_stream);
 
-    double cpu_start = omp_get_wtime();
-    for (Ped::Tagent *agent : agents) {
-      move(agent);
+    for (auto &region : regions) {
+      region.agentsInRegion.clear();
     }
-    double cpu_end = omp_get_wtime();
+
+#pragma omp parallel for default(none) shared(agents, regions, regionMutexes)
+    for (int i = 0; i < agents.size(); ++i) {
+      int regionId = find_region(agents[i]->getX(), agents[i]->getY());
+      std::lock_guard<std::mutex> lock(*regionMutexes[regionId]);
+      regions[regionId].agentsInRegion.push_back(agents[i]);
+    }
+    updateHeatmapSeq();
+#pragma omp parallel for default(none) shared(regions, numRegions)
+    for (int i = 0; i < numRegions; ++i) {
+      move(&regions[i]);
+    }
 
     if (cuda_sync) {
       cudaStreamSynchronize(heatmap_stream);
     }
 
-    static int tick_cnt_full = 0;
-    if (++tick_cnt_full % 100 == 0) {
-      float gpu_ms = 0;
-      cudaEventElapsedTime(&gpu_ms, start_event, stop_event);
-      printf("Overlap Stats (FULL): CPU Loop: %.2f ms, GPU Heatmap: %.2f ms "
-             "(Concurrent)\n",
-             (cpu_end - cpu_start) * 1000.0, gpu_ms);
-    }
+    // static int tick_cnt_full = 0;
+    // if (++tick_cnt_full % 100 == 0) {
+    // float gpu_ms = 0;
+    // cudaEventElapsedTime(&gpu_ms, start_event, stop_event);
+    // printf("Overlap Stats (FULL): CPU Loop: %.2f ms, GPU Heatmap: %.2f ms "
+    //"(Concurrent)\n",
+    //(cpu_end - cpu_start) * 1000.0, gpu_ms);
+    //}
     break;
   }
   case Ped::SEQ_REGION: {
